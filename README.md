@@ -124,6 +124,13 @@ inside the extension namespace the specification reserves.
 Why the format was adopted but not its tooling is written up in
 [ADR-0001](docs/adr-0001-storage-and-tooling.md).
 
+## Documentation
+
+- [Command reference](docs/cli.md)
+- [Editors](docs/editors.md) — Zed, and any other LSP client
+- [Storage format](docs/format.md)
+- [Working with coding agents](docs/agents.md)
+
 ## Limitations
 
 - Replies and resolving someone else's comment are CLI-only; the editor offers

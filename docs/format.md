@@ -1,0 +1,73 @@
+# Storage format
+
+Review data lives beside the document, never inside it:
+
+```
+doc.md              the document
+doc.md.review.yaml  the review
+```
+
+The format is [MRSF](https://sidemark.org), the Markdown Review Sidecar Format.
+mdrev reads and writes it directly, and its output is accepted by the reference
+validator, `mrsf validate`. Why the format was adopted but not its tooling is
+in [ADR-0001](adr-0001-storage-and-tooling.md).
+
+## A sidecar
+
+```yaml
+mrsf_version: "1.0"
+document: spec.md
+comments:
+  - id: 53c5f1e2-bbab-4c1a-b8d5-3c4915398fa4
+    author: Claude
+    timestamp: 2026-09-09T03:39:35.814Z
+    text: The threshold is not justified.
+    resolved: false
+    line: 38
+    type: issue
+    severity: high
+    selected_text: no more than 2
+    selected_text_hash: 595166fb…
+    x_suggested_text: no more than 1
+```
+
+`selected_text_hash` is the SHA-256 of `selected_text`.
+
+## Anchors
+
+A comment is found by its quoted text, not by its line: the line is only a hint
+that disambiguates a fragment occurring several times. When the document is
+edited, the comment follows the text; when the fragment disappears, the comment
+survives, marked as orphaned rather than deleted. A lost comment is worse than
+a misplaced one.
+
+## Threads
+
+A reply is a comment with `reply_to` pointing at its parent, and it inherits
+the parent's anchor. Tools that do not understand threading still see valid
+comments.
+
+## Suggested edits
+
+MRSF has no field for a proposed replacement, so mdrev stores one in
+`x_suggested_text`, inside the `x_*` extension namespace the specification
+reserves. Other MRSF tools ignore it instead of failing. If the specification
+ever describes suggested edits itself, mdrev will move to its fields.
+
+## Drafts in the document
+
+A comment can be typed straight into the document as CriticMarkup:
+
+```markdown
+Latency p99 must not exceed 200 ms. {>>too optimistic<<}
+```
+
+This is not storage — it is input. The marker is highlighted as unfiled, and
+its code action moves it into the sidecar, anchored to the words in front of
+it, while removing it from the document. Nothing stays behind.
+
+## Editing by hand
+
+Don't. The anchor hash and the thread links are maintained by the commands,
+and a hand-edited sidecar can silently lose comments on the next re-anchor.
+Use `mdrev comment`, `mdrev reply` and `mdrev threads`.
