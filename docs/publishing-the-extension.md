@@ -36,7 +36,7 @@ subdirectory, and sort the file:
 [mdrev-language-server]
 submodule = "extensions/mdrev-language-server"
 path = "zed-extension"
-version = "0.1.0"
+version = "0.1.1"
 ```
 
 ```sh

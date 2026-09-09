@@ -1,6 +1,6 @@
 id = "mdrev-language-server"
 name = "mdrev"
-version = "0.1.0"
+version = "0.1.1"
 schema_version = 1
 description = "Inline review comments, questions and suggested edits for Markdown documents, stored in MRSF sidecar files"
 repository = "https://github.com/esivres/mdrev"
