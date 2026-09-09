@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/esivres/mdrev/internal/anchor"
 	"github.com/esivres/mdrev/internal/lsp"
 	"github.com/esivres/mdrev/internal/mrsf"
 	"github.com/esivres/mdrev/internal/tui"
@@ -238,6 +239,24 @@ func addComment(args []string) error {
 	// Zed hands multi-line selections through verbatim; the first line is
 	// enough to anchor on and keeps the sidecar readable.
 	*quote = strings.TrimSpace(firstLine(*quote))
+	if *quote == "" && *line > 0 {
+		// Without a selection, anchor on the line itself rather than on
+		// nothing: a comment with no anchor cannot follow the text at all.
+		*quote = lineWords(*file, *line)
+	}
+
+	// Standing on a line that already carries a discussion, the useful action
+	// is usually to answer it; requiring the text to be reselected first to say
+	// so is needless work.
+	if *quote == "" && *text == "" && term.IsTerminal(int(os.Stdin.Fd())) {
+		handled, err := offerReply(*file, *line, *author)
+		if err != nil {
+			return err
+		}
+		if handled {
+			return nil
+		}
+	}
 
 	if *text == "" {
 		// A form beats a raw prompt: the text can be edited, and a replacement
@@ -305,6 +324,20 @@ func requireDocument(path string) error {
 		return fmt.Errorf("%s is a directory", path)
 	}
 	return nil
+}
+
+// lineWords quotes the start of a line, for a comment made without selecting
+// anything.
+func lineWords(document string, line int) string {
+	data, err := os.ReadFile(document)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	if line < 1 || line > len(lines) {
+		return ""
+	}
+	return anchor.After(lines[line-1])
 }
 
 func firstLine(s string) string {
