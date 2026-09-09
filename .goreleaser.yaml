@@ -1,0 +1,51 @@
+version: 2
+project_name: mdrev
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/mdrev
+    binary: mdrev
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+# Formula rather than cask: casks are macOS-only and mdrev must install
+# through Linuxbrew too.
+brews:
+  - repository:
+      owner: esivres
+      name: homebrew-tap
+    homepage: https://github.com/esivres/mdrev
+    description: Review markdown documents — inline comments, questions and suggested edits
+    license: MIT
+    test: |
+      system "#{bin}/mdrev", "--help"
+
+scoops:
+  - repository:
+      owner: esivres
+      name: scoop-bucket
+    homepage: https://github.com/esivres/mdrev
+    description: Review markdown documents — inline comments, questions and suggested edits
+    license: MIT
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
