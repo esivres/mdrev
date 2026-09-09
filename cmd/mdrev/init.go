@@ -12,10 +12,19 @@ import (
 	"golang.org/x/term"
 )
 
-const marksmanNote = `Zed cannot register a language server from settings: only an extension can
-declare one. mdrev works around this by taking over the Marksman extension,
-which declares itself the server for Markdown, and overriding its binary.
-Install Marksman from the Zed extensions panel.`
+// hostExtension is the extension whose language server slot mdrev occupies.
+// Zed only lets an extension declare a server, and mdrev has none of its own
+// yet, so it overrides the binary of one that does. Markdownlint is chosen
+// over Marksman because Marksman is worth keeping alive alongside us: Zed runs
+// several servers per language, so its link navigation survives.
+const hostExtension = "markdownlint"
+
+const hostNote = `Zed cannot register a language server from settings: only an extension can
+declare one. mdrev works around this by taking over the Markdownlint
+extension, which declares itself a server for Markdown, and overriding its
+binary. Install Markdownlint from the Zed extensions panel.
+
+Other Markdown servers keep running alongside mdrev, so Marksman stays useful.`
 
 const commentTask = "Comment on selection"
 const questionTask = "Question about selection"
@@ -48,9 +57,9 @@ func initProject(args []string) error {
 		return err
 	}
 
-	if !marksmanInstalled() {
-		fmt.Println("\n! Marksman extension not found.")
-		fmt.Println(marksmanNote)
+	if !hostExtensionInstalled() {
+		fmt.Printf("\n! %s extension not found.\n", hostExtension)
+		fmt.Println(hostNote)
 	}
 
 	if *noKeymap {
@@ -159,19 +168,20 @@ func writeIfAbsent(path, content string) error {
 	return nil
 }
 
-func marksmanInstalled() bool {
+func hostExtensionInstalled() bool {
 	_, err := os.Stat(filepath.Join(os.Getenv("HOME"),
-		".local/share/zed/extensions/installed/marksman/extension.toml"))
+		".local/share/zed/extensions/installed", hostExtension, "extension.toml"))
 	return err == nil
 }
 
 func zedSettings(exe string) string {
 	return mustJSON(map[string]any{
 		"languages": map[string]any{
-			"Markdown": map[string]any{"language_servers": []string{"marksman"}},
+			// "..." keeps every other Markdown server enabled next to us.
+			"Markdown": map[string]any{"language_servers": []string{hostExtension, "..."}},
 		},
 		"lsp": map[string]any{
-			"marksman": map[string]any{
+			hostExtension: map[string]any{
 				"binary": map[string]any{
 					"path":                  exe,
 					"arguments":             []string{"lsp"},

@@ -234,8 +234,13 @@ func (s *Server) handle(msg *rpcMessage) {
 	case "workspace/executeCommand":
 		s.reply(msg.ID, s.executeCommand(msg.Params))
 	default:
+		// Answering an unsupported request with null makes clients that expect
+		// a list report a decoding error; say "no such method" instead.
 		if len(msg.ID) > 0 {
-			s.reply(msg.ID, nil)
+			s.send(rpcMessage{ID: msg.ID, Error: &rpcError{
+				Code:    -32601,
+				Message: "method not supported: " + msg.Method,
+			}})
 		}
 	}
 }
