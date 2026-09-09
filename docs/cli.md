@@ -31,7 +31,13 @@ borrows the markdownlint server slot, as a fallback.
 
 ## mdrev comment
 
-Adds a comment. The text comes from stdin (finish with `Ctrl+D`) unless given.
+Adds a comment. With a terminal attached and no `--text`, it opens a form: the
+text can be edited, `Ctrl+T` changes the type, and `Tab` reveals a field for a
+replacement to propose — so a suggestion can be written without knowing the
+flag. `Ctrl+S` saves, `Esc` cancels.
+
+Without a terminal — a script, an agent — the text is read from stdin, finished
+with `Ctrl+D`, exactly as before.
 
 | flag | meaning |
 |---|---|

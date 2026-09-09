@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/term"
+
 	"github.com/esivres/mdrev/internal/lsp"
 	"github.com/esivres/mdrev/internal/mrsf"
 	"github.com/esivres/mdrev/internal/tui"
@@ -238,11 +240,30 @@ func addComment(args []string) error {
 	*quote = strings.TrimSpace(firstLine(*quote))
 
 	if *text == "" {
-		body, err := readText(*quote, *line, *useEditor)
-		if err != nil {
-			return err
+		// A form beats a raw prompt: the text can be edited, and a replacement
+		// can be proposed without knowing the flag for it.
+		if !*useEditor && term.IsTerminal(int(os.Stdin.Fd())) {
+			draft, ok, err := tui.Compose(*quote, *line)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("cancelled")
+			}
+			*text = draft.Text
+			if draft.Type != "" && *kind == "" {
+				*kind = draft.Type
+			}
+			if draft.Suggest != "" && *suggest == "" {
+				*suggest = draft.Suggest
+			}
+		} else {
+			body, err := readText(*quote, *line, *useEditor)
+			if err != nil {
+				return err
+			}
+			*text = body
 		}
-		*text = body
 	}
 	if *text == "" {
 		return fmt.Errorf("comment text is empty")
