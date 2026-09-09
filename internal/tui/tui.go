@@ -41,15 +41,16 @@ type model struct {
 	cursor   int
 	showAll  bool
 
-	mode    mode
-	body    viewport.Model
-	editor  textarea.Model
-	status  string
-	newID   string // thread to select after reloading, so a new comment opens
-	ready   bool
-	width   int
-	height  int
-	quitErr error
+	mode       mode
+	body       viewport.Model
+	editor     textarea.Model
+	status     string
+	confirming bool   // esc left the editor; a single key decides what happens
+	newID      string // thread to select after reloading, so a new comment opens
+	ready      bool
+	width      int
+	height     int
+	quitErr    error
 }
 
 var (
@@ -86,7 +87,7 @@ func Run(document string, line int) error {
 
 func newEditor() textarea.Model {
 	ta := textarea.New()
-	ta.Placeholder = "Your reply. Ctrl+S to send, Esc to cancel."
+	ta.Placeholder = "Your reply. Esc when done."
 	ta.ShowLineNumbers = false
 	ta.SetHeight(6)
 	return ta
@@ -246,7 +247,7 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		m.mode = composing
 		m.editor.Reset()
-		m.editor.Placeholder = "New comment. Ctrl+S to save, Esc to cancel."
+		m.editor.Placeholder = "New comment. Esc when done."
 		m.editor.Focus()
 		m.status = ""
 		return m, textarea.Blink
@@ -256,7 +257,7 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.mode = replying
-		m.editor.Placeholder = "Your reply. Ctrl+S to send, Esc to cancel."
+		m.editor.Placeholder = "Your reply. Esc when done."
 		m.editor.Reset()
 		m.editor.Focus()
 		m.status = ""
@@ -288,12 +289,45 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // Writing a new comment and replying share their keys.
 func (m model) updateComposing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.confirming {
+		switch msg.String() {
+		case "s", "enter":
+			m.confirming = false
+			return m.save()
+		case "q":
+			m.confirming = false
+			m.mode = browsing
+			return m, nil
+		case "i", "a", "esc":
+			m.confirming = false
+			m.editor.Focus()
+			return m, textarea.Blink
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "esc":
-		m.mode = browsing
+		// Same reason as the compose form: ctrl+s is flow control in a
+		// terminal, so esc finishes and asks what to do with the text.
+		if strings.TrimSpace(m.editor.Value()) == "" {
+			m.mode = browsing
+			m.editor.Blur()
+			return m, nil
+		}
+		m.confirming = true
 		m.editor.Blur()
 		return m, nil
 	case "ctrl+s", "ctrl+d":
+		return m.save()
+	}
+	var cmd tea.Cmd
+	m.editor, cmd = m.editor.Update(msg)
+	return m, cmd
+}
+
+func (m model) save() (tea.Model, tea.Cmd) {
+	{
 		text := strings.TrimSpace(m.editor.Value())
 		if text == "" {
 			m.mode = browsing
@@ -327,9 +361,6 @@ func (m model) updateComposing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.body.SetContent(m.threadView())
 		return m, nil
 	}
-	var cmd tea.Cmd
-	m.editor, cmd = m.editor.Update(msg)
-	return m, cmd
 }
 
 func (m *model) saveReply(text string) error {
@@ -444,8 +475,11 @@ func (m model) View() string {
 
 	help := "j/k thread · ctrl+d/ctrl+u scroll · n new · r reply · x resolve · " +
 		m.resolvedHelp() + " · o open in editor · q quit"
-	if m.mode != browsing {
-		help = "ctrl+s save · esc cancel"
+	switch {
+	case m.confirming:
+		help = "s save · i keep typing · q discard"
+	case m.mode != browsing:
+		help = "esc when done"
 	}
 	footer := "  " + dimStyle.Render(help)
 	if m.status != "" {

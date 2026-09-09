@@ -32,9 +32,13 @@ borrows the markdownlint server slot, as a fallback.
 ## mdrev comment
 
 Adds a comment. With a terminal attached and no `--text`, it opens a form: the
-text can be edited, `Ctrl+T` changes the type, and `Tab` reveals a field for a
-replacement to propose — so a suggestion can be written without knowing the
-flag. `Ctrl+S` saves, `Esc` cancels.
+text can be edited, and `Tab` reveals a field for a replacement to propose — so
+a suggestion can be written without knowing the flag.
+
+`Esc` leaves the text, and then a single key decides: `s` saves, `t` changes the
+type, `r` opens the replacement field, `i` goes back to typing, `q` discards.
+Finishing is a mode rather than a chord because terminals take `Ctrl+S` as flow
+control and shells claim `Ctrl+T` and `Ctrl+D`.
 
 Without a terminal — a script, an agent — the text is read from stdin, finished
 with `Ctrl+D`, exactly as before.
@@ -123,7 +127,7 @@ Opens the terminal UI over one document.
 | `j` / `k` | move between threads |
 | `ctrl+d` / `ctrl+u` | scroll the thread by half a page (`f`/`b` for a full one) |
 | `n` | start a new thread on the line you came from |
-| `r` | reply to the selected thread (`Ctrl+S` sends, `Esc` cancels) |
+| `r` | reply to the selected thread; `Esc` when done, then `s` to send |
 | `x` | resolve or reopen |
 | `a` | show resolved threads too, and hide them again |
 | `o` | open the document at the thread's line in `$EDITOR` |

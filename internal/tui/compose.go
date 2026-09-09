@@ -26,9 +26,27 @@ type composeModel struct {
 	typeAt  int
 	body    textarea.Model
 	suggest textarea.Model
-	focus   int // 0 body, 1 suggestion
+	focus   int  // 0 body, 1 suggestion
+	command bool // esc leaves the text and single keys act
 	saved   bool
 	width   int
+}
+
+// composeStart builds the form without running it, so its behaviour can be
+// driven directly.
+func composeStart(quote string, line int) (composeModel, bool, error) {
+	body := textarea.New()
+	body.ShowLineNumbers = false
+	body.SetHeight(6)
+	body.SetWidth(defaultWidth)
+	body.Focus()
+
+	suggest := textarea.New()
+	suggest.ShowLineNumbers = false
+	suggest.SetHeight(3)
+	suggest.SetWidth(defaultWidth)
+
+	return composeModel{quote: quote, line: line, body: body, suggest: suggest}, false, nil
 }
 
 // Compose collects a comment: the text, what kind it is, and a replacement to
@@ -78,30 +96,21 @@ func (m composeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.command {
+			return m.runCommand(msg)
+		}
 		switch msg.String() {
-		case "esc", "ctrl+c":
+		case "ctrl+c":
 			return m, tea.Quit
-		case "ctrl+s", "ctrl+d":
-			if strings.TrimSpace(m.body.Value()) != "" {
-				m.saved = true
-			}
-			return m, tea.Quit
-		case "ctrl+t":
-			m.typeAt = (m.typeAt + 1) % len(commentTypes)
+		case "esc":
+			// Terminals eat ctrl+s as flow control and shells claim ctrl+t and
+			// ctrl+d, so finishing is a mode rather than a chord.
+			m.command = true
+			m.body.Blur()
+			m.suggest.Blur()
 			return m, nil
 		case "tab":
-			// The replacement field is only meaningful for a suggestion, and
-			// switching to it says so without a separate step.
-			m.focus = 1 - m.focus
-			if m.focus == 1 {
-				m.typeAt = indexOf(commentTypes, "suggestion")
-				m.body.Blur()
-				m.suggest.Focus()
-			} else {
-				m.suggest.Blur()
-				m.body.Focus()
-			}
-			return m, textarea.Blink
+			return m.toggleSuggestion()
 		}
 	}
 
@@ -112,6 +121,48 @@ func (m composeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.suggest, cmd = m.suggest.Update(msg)
 	}
 	return m, cmd
+}
+
+func (m composeModel) runCommand(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "s", "enter":
+		if strings.TrimSpace(m.body.Value()) != "" {
+			m.saved = true
+		}
+		return m, tea.Quit
+	case "q", "esc", "ctrl+c":
+		return m, tea.Quit
+	case "t":
+		m.typeAt = (m.typeAt + 1) % len(commentTypes)
+		return m, nil
+	case "r":
+		m.command = false
+		return m.toggleSuggestion()
+	case "i", "a":
+		m.command = false
+		if m.focus == 1 {
+			m.suggest.Focus()
+		} else {
+			m.body.Focus()
+		}
+		return m, textarea.Blink
+	}
+	return m, nil
+}
+
+// The replacement field is only meaningful for a suggestion, so opening it sets
+// the type too.
+func (m composeModel) toggleSuggestion() (tea.Model, tea.Cmd) {
+	m.focus = 1 - m.focus
+	if m.focus == 1 {
+		m.typeAt = indexOf(commentTypes, "suggestion")
+		m.body.Blur()
+		m.suggest.Focus()
+	} else {
+		m.suggest.Blur()
+		m.body.Focus()
+	}
+	return m, textarea.Blink
 }
 
 func (m composeModel) View() string {
@@ -131,8 +182,12 @@ func (m composeModel) View() string {
 		b.WriteString("\n  " + dimStyle.Render("replacement:") + "\n" + m.suggest.View() + "\n")
 	}
 
-	b.WriteString("\n  " + dimStyle.Render(
-		"ctrl+s save · ctrl+t change type · tab propose a replacement · esc cancel") + "\n")
+	if m.command {
+		b.WriteString("\n  " + selectedStyle.Render("s save") +
+			dimStyle.Render(" · t change type · r propose a replacement · i keep typing · q discard") + "\n")
+	} else {
+		b.WriteString("\n  " + dimStyle.Render("esc when done · tab propose a replacement") + "\n")
+	}
 	return b.String()
 }
 
