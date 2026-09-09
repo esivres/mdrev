@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -117,6 +118,9 @@ var errUnexpectedlyEmpty = errors.New("sidecar read back with no comments")
 // A review someone made private must not become world-readable just because a
 // comment was added to it.
 func TestSaveKeepsFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix permission bits; Go reports 0666 or 0444")
+	}
 	dir := t.TempDir()
 	doc := filepath.Join(dir, "doc.md")
 	if err := os.WriteFile(Path(doc), []byte(foreign), 0o600); err != nil {
