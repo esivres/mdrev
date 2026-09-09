@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -29,6 +28,7 @@ type mode int
 
 const (
 	browsing mode = iota
+	reading       // inside a thread: the keys scroll it
 	replying
 	composing
 )
@@ -44,6 +44,7 @@ type model struct {
 	mode       mode
 	body       viewport.Model
 	editor     textarea.Model
+	markdown   renderer
 	status     string
 	confirming bool   // esc left the editor; a single key decides what happens
 	newID      string // thread to select after reloading, so a new comment opens
@@ -205,10 +206,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if m.mode != browsing {
+		switch m.mode {
+		case reading:
+			return m.updateReading(msg)
+		case browsing:
+			return m.updateBrowsing(msg)
+		default:
 			return m.updateComposing(msg)
 		}
-		return m.updateBrowsing(msg)
 	}
 	return m, nil
 }
@@ -218,11 +223,7 @@ func (m *model) layout() {
 	listWidth := min(42, max(20, m.width/3))
 	bodyWidth := max(20, m.width-listWidth-4)
 	m.body = viewport.New(bodyWidth, max(3, m.height-5))
-	// j/k and the arrows move between threads.
-	km := viewport.DefaultKeyMap()
-	km.Up = key.NewBinding()
-	km.Down = key.NewBinding()
-	m.body.KeyMap = km
+	m.body.KeyMap = viewport.DefaultKeyMap()
 	m.editor.SetWidth(bodyWidth)
 }
 
@@ -230,6 +231,13 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "esc", "ctrl+c":
 		return m, tea.Quit
+
+	case "enter":
+		// Reading a thread and moving between them want the same keys, so
+		// entering one hands the arrows to it until esc.
+		if len(m.threads) > 0 {
+			m.mode = reading
+		}
 
 	case "j", "down":
 		if m.cursor < len(m.threads)-1 {
@@ -279,12 +287,26 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.openInEditor()
 		return m, cmd
 
-	default:
-		var cmd tea.Cmd
-		m.body, cmd = m.body.Update(msg)
-		return m, cmd
 	}
 	return m, nil
+}
+
+// updateReading scrolls the selected thread. The arrows and j/k belong to the
+// thread here, which is why entering it is a mode rather than another chord.
+func (m model) updateReading(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		m.mode = browsing
+		return m, nil
+	case "r", "n", "x", "o", "a":
+		// The thread-level actions still work without going back first.
+		m.mode = browsing
+		return m.updateBrowsing(msg)
+	}
+
+	var cmd tea.Cmd
+	m.body, cmd = m.body.Update(msg)
+	return m, cmd
 }
 
 // Writing a new comment and replying share their keys.
@@ -473,11 +495,13 @@ func (m model) View() string {
 		listStyle.Render(m.listView()),
 		m.bodyPane())
 
-	help := "j/k thread · ctrl+d/ctrl+u scroll · n new · r reply · x resolve · " +
+	help := "j/k thread · enter read it · n new · r reply · x resolve · " +
 		m.resolvedHelp() + " · o open in editor · q quit"
 	switch {
 	case m.confirming:
 		help = "s save · i keep typing · q discard"
+	case m.mode == reading:
+		help = "↑/↓ scroll the thread · r reply · x resolve · o open in editor · esc back to the list"
 	case m.mode != browsing:
 		help = "esc when done"
 	}
@@ -493,6 +517,15 @@ func (m model) resolvedHelp() string {
 		return "a hide resolved"
 	}
 	return "a show resolved"
+}
+
+// prose renders a comment as markdown, falling back to plain wrapping where
+// that is not possible.
+func (m *model) prose(text string) string {
+	if out, ok := m.markdown.render(text, m.body.Width); ok {
+		return out
+	}
+	return m.wrap(text, "  ")
 }
 
 // wrap folds prose to the pane. A review is written in sentences, and a
@@ -569,7 +602,7 @@ func (m model) bodyPane() string {
 	return m.body.View()
 }
 
-func (m model) threadView() string {
+func (m *model) threadView() string {
 	if len(m.threads) == 0 {
 		return ""
 	}
@@ -589,7 +622,7 @@ func (m model) threadView() string {
 
 	writeComment := func(c mrsf.Comment) {
 		b.WriteString(authorStyle.Render(c.Author) + "  " + dimStyle.Render(when(c.Timestamp)) + "\n")
-		b.WriteString(m.wrap(c.Text, "  ") + "\n\n")
+		b.WriteString(m.prose(c.Text) + "\n\n")
 	}
 	writeComment(t.parent)
 	if s, ok := t.parent.SuggestedText(); ok {

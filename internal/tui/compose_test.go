@@ -18,6 +18,10 @@ func press(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyTab}
 	case "enter":
 		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "down":
+		return tea.KeyMsg{Type: tea.KeyDown}
+	case "up":
+		return tea.KeyMsg{Type: tea.KeyUp}
 	}
 	panic("unknown key " + s)
 }

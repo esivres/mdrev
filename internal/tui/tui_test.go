@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/esivres/mdrev/internal/mrsf"
 )
@@ -111,3 +112,66 @@ func TestWrapKeepsBlankLinesBetweenParagraphs(t *testing.T) {
 		t.Errorf("the blank line between paragraphs was lost:\n%q", wrapped)
 	}
 }
+
+// Comments are written in markdown because the documents are: a field name in
+// backticks and a dash for a list are how people write, and showing the source
+// would make the review harder to read than the text it is about.
+func TestCommentMarkdownIsRendered(t *testing.T) {
+	m := model{body: viewport.New(60, 10)}
+
+	out := m.prose("Порог `2` не обоснован:\n\n- «ООО Альфа» и «ООО Альба»\n- нужен другой ключ")
+	// Styling is inserted mid-phrase, so the assertions read the plain text.
+	plain := ansi.Strip(out)
+
+	if strings.Contains(plain, "- «ООО Альфа»") {
+		t.Errorf("the list marker was left as source:\n%s", plain)
+	}
+	if !strings.Contains(plain, "«ООО Альфа»") || !strings.Contains(plain, "нужен другой ключ") {
+		t.Errorf("the text itself must survive:\n%s", plain)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if width := lipgloss.Width(line); width > 60 {
+			t.Errorf("line is %d wide, pane is 60: %q", width, line)
+		}
+	}
+}
+
+// A pane too narrow to render into must still show the comment.
+func TestNarrowPaneFallsBackToPlainText(t *testing.T) {
+	m := model{body: viewport.New(10, 10)}
+
+	if out := m.prose("some remark"); !strings.Contains(out, "some remark") {
+		t.Errorf("the comment must appear even when markdown cannot be rendered: %q", out)
+	}
+}
+
+// Moving between threads and reading one want the same keys, so entering a
+// thread hands the arrows to it and esc gives them back.
+func TestReadingModeScrollsTheThreadAndEscReturns(t *testing.T) {
+	m := model{
+		threads: []thread{{parent: mrsf.Comment{ID: "a"}}, {parent: mrsf.Comment{ID: "b"}}},
+		body:    viewport.New(40, 3),
+	}
+	m.body.SetContent(strings.Repeat("line\n", 40))
+
+	entered, _ := m.updateBrowsing(press("enter"))
+	reading := entered.(model)
+	if reading.mode != readingMode() {
+		t.Fatalf("enter must open the thread, mode is %v", reading.mode)
+	}
+
+	scrolled, _ := reading.updateReading(press("down"))
+	if scrolled.(model).body.YOffset == 0 {
+		t.Error("the arrows must scroll the thread while reading it")
+	}
+	if scrolled.(model).cursor != 0 {
+		t.Error("scrolling must not move between threads")
+	}
+
+	back, _ := scrolled.(model).updateReading(press("esc"))
+	if back.(model).mode != browsing {
+		t.Error("esc must return to the list")
+	}
+}
+
+func readingMode() mode { return reading }
