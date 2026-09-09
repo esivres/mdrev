@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"golang.org/x/term"
+
+	"github.com/esivres/mdrev/internal/agentdocs"
 )
 
 // hostExtension is the extension whose language server slot mdrev occupies.
@@ -38,6 +40,7 @@ func initProject(args []string) error {
 	keys := fs.String("keys", "", "shortcut for the comment task, e.g. alt-c; a second one may follow after a comma")
 	writeKeymap := fs.Bool("write-keymap", false, "write the shortcuts into Zed's global keymap")
 	noKeymap := fs.Bool("no-keymap", false, "skip shortcuts entirely")
+	agentDocs := fs.String("agent-docs", "", "instructions for coding agents: agents | skill | both | none")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -50,16 +53,20 @@ func initProject(args []string) error {
 		exe = resolved
 	}
 
-	if err := writeIfAbsent(filepath.Join(".zed", "settings.json"), zedSettings(exe)); err != nil {
+	if err := writeIfAbsent(filepath.Join(".zed", "settings.json"), zedSettings(exe, ownExtensionInstalled())); err != nil {
 		return err
 	}
 	if err := writeIfAbsent(filepath.Join(".zed", "tasks.json"), zedTasks(exe)); err != nil {
 		return err
 	}
 
-	if !hostExtensionInstalled() {
-		fmt.Printf("\n! %s extension not found.\n", hostExtension)
+	if !ownExtensionInstalled() && !hostExtensionInstalled() {
+		fmt.Printf("\n! Neither the mdrev extension nor %s is installed.\n", hostExtension)
 		fmt.Println(hostNote)
+	}
+
+	if err := setUpAgentDocs(*agentDocs); err != nil {
+		return err
 	}
 
 	if *noKeymap {
@@ -73,6 +80,52 @@ func initProject(args []string) error {
 		return nil
 	}
 	return applyKeymap(comment, question, *writeKeymap)
+}
+
+// setUpAgentDocs installs the instructions that tell a coding agent how to use
+// mdrev, so the human does not have to explain it in every session.
+func setUpAgentDocs(choice string) error {
+	if choice == "" {
+		if !term.IsTerminal(int(os.Stdin.Fd())) {
+			return nil
+		}
+		fmt.Println("\nInstructions for coding agents:")
+		fmt.Println("  1) AGENTS.md")
+		fmt.Println("  2) Claude Code skill (.claude/skills/mdrev)")
+		fmt.Println("  3) both")
+		fmt.Println("  4) none  (default)")
+		fmt.Print("> ")
+		in := bufio.NewScanner(os.Stdin)
+		if !in.Scan() {
+			return nil
+		}
+		switch strings.TrimSpace(in.Text()) {
+		case "1":
+			choice = "agents"
+		case "2":
+			choice = "skill"
+		case "3":
+			choice = "both"
+		default:
+			return nil
+		}
+	}
+
+	switch choice {
+	case "", "none":
+		return nil
+	case "agents":
+		return agentdocs.AppendToAgentsFile("AGENTS.md")
+	case "skill":
+		return agentdocs.WriteSkill(filepath.Join(".claude", "skills", "mdrev"))
+	case "both":
+		if err := agentdocs.AppendToAgentsFile("AGENTS.md"); err != nil {
+			return err
+		}
+		return agentdocs.WriteSkill(filepath.Join(".claude", "skills", "mdrev"))
+	default:
+		return fmt.Errorf("unknown --agent-docs value %q", choice)
+	}
 }
 
 // chooseKeys resolves the shortcuts from --keys, or asks when stdin is a
@@ -174,10 +227,20 @@ func hostExtensionInstalled() bool {
 	return err == nil
 }
 
-func zedSettings(exe string) string {
+// zedSettings enables mdrev for Markdown. With our own extension installed the
+// server is simply named; without it we borrow another extension's slot, since
+// Zed will not register a server that no extension declares. Either way "..."
+// keeps the other Markdown servers running next to us.
+func zedSettings(exe string, ownExtension bool) string {
+	if ownExtension {
+		return mustJSON(map[string]any{
+			"languages": map[string]any{
+				"Markdown": map[string]any{"language_servers": []string{"mdrev", "..."}},
+			},
+		})
+	}
 	return mustJSON(map[string]any{
 		"languages": map[string]any{
-			// "..." keeps every other Markdown server enabled next to us.
 			"Markdown": map[string]any{"language_servers": []string{hostExtension, "..."}},
 		},
 		"lsp": map[string]any{
@@ -190,6 +253,12 @@ func zedSettings(exe string) string {
 			},
 		},
 	})
+}
+
+func ownExtensionInstalled() bool {
+	_, err := os.Stat(filepath.Join(os.Getenv("HOME"),
+		".local/share/zed/extensions/installed/mdrev/extension.toml"))
+	return err == nil
 }
 
 func zedTasks(exe string) string {

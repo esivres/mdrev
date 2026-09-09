@@ -1,0 +1,11 @@
+id = "mdrev"
+name = "mdrev"
+version = "0.1.0"
+schema_version = 1
+description = "Review comments for markdown, stored in MRSF sidecars"
+repository = "https://github.com/esivres/mdrev"
+authors = ["esivres"]
+
+[language_servers.mdrev]
+name = "mdrev"
+languages = ["Markdown", "Markdown-Inline"]
