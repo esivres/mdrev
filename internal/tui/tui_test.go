@@ -1,7 +1,11 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/charmbracelet/bubbles/viewport"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/esivres/mdrev/internal/mrsf"
 )
@@ -67,5 +71,43 @@ func TestParagraphFollowsTheQuoteNotTheLine(t *testing.T) {
 func TestParagraphFallsBackToTheLine(t *testing.T) {
 	if got := paragraphAt(doc, 8, "gone from the document"); got != "Latency p99 must not exceed 200 ms per request." {
 		t.Errorf("got %q", got)
+	}
+}
+
+// A review is written in sentences, and a terminal cuts whatever runs past its
+// width with no sign that anything is missing — so the end of a remark would
+// simply be invisible.
+func TestLongProseIsWrappedToThePane(t *testing.T) {
+	m := model{body: viewport.New(40, 10)}
+	text := "Порог 2 не обоснован: для коротких наименований это почти всегда " +
+		"ложное срабатывание, и его стоит пересмотреть."
+
+	wrapped := m.wrap(text, "  ")
+
+	lines := strings.Split(wrapped, "\n")
+	if len(lines) < 3 {
+		t.Errorf("want the text folded over several lines, got %d:\n%s", len(lines), wrapped)
+	}
+	for _, line := range lines {
+		if width := lipgloss.Width(line); width > 40 {
+			t.Errorf("line is %d wide, pane is 40: %q", width, line)
+		}
+		if !strings.HasPrefix(line, "  ") {
+			t.Errorf("every line keeps the indent, got %q", line)
+		}
+	}
+	if !strings.Contains(strings.Join(lines, " "), "пересмотреть") {
+		t.Error("the end of the text must survive wrapping")
+	}
+}
+
+// Paragraphs the author separated must stay separated.
+func TestWrapKeepsBlankLinesBetweenParagraphs(t *testing.T) {
+	m := model{body: viewport.New(40, 10)}
+
+	wrapped := m.wrap("first paragraph\n\nsecond paragraph", "  ")
+
+	if !strings.Contains(wrapped, "\n  \n") && !strings.Contains(wrapped, "\n\n") {
+		t.Errorf("the blank line between paragraphs was lost:\n%q", wrapped)
 	}
 }

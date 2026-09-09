@@ -495,6 +495,25 @@ func (m model) resolvedHelp() string {
 	return "a show resolved"
 }
 
+// wrap folds prose to the pane. A review is written in sentences, and a
+// terminal simply cuts anything past its width, so the end of a remark would
+// be invisible with no sign that it is there.
+func (m model) wrap(text, indent string) string {
+	width := m.body.Width - lipgloss.Width(indent)
+	if width < 20 {
+		width = 20
+	}
+	style := lipgloss.NewStyle().Width(width)
+
+	var out []string
+	for _, paragraph := range strings.Split(text, "\n") {
+		for _, line := range strings.Split(style.Render(paragraph), "\n") {
+			out = append(out, indent+strings.TrimRight(line, " "))
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
 // A thread continuing past the pane is otherwise invisible.
 func (m model) scrollHint() string {
 	if m.mode != browsing || m.body.AtBottom() && m.body.AtTop() {
@@ -570,14 +589,11 @@ func (m model) threadView() string {
 
 	writeComment := func(c mrsf.Comment) {
 		b.WriteString(authorStyle.Render(c.Author) + "  " + dimStyle.Render(when(c.Timestamp)) + "\n")
-		for _, line := range strings.Split(c.Text, "\n") {
-			b.WriteString("  " + line + "\n")
-		}
-		b.WriteString("\n")
+		b.WriteString(m.wrap(c.Text, "  ") + "\n\n")
 	}
 	writeComment(t.parent)
 	if s, ok := t.parent.SuggestedText(); ok {
-		b.WriteString(suggestStyle.Render("suggested: "+s) + "\n\n")
+		b.WriteString(suggestStyle.Render(m.wrap("suggested: "+s, "")) + "\n\n")
 	}
 	for _, r := range t.replies {
 		writeComment(r)
