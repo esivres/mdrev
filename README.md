@@ -73,12 +73,24 @@ the code action menu offers "Apply suggestion" and "Dismiss / mark resolved".
 If you would rather select text and press a key, `mdrev setup` also installs
 Zed tasks bound to a shortcut of your choice.
 
+Inline diagnostics show one line, which is not enough for a discussion, so
+whole threads live in a terminal UI:
+
+```sh
+mdrev threads spec.md
+```
+
+`j`/`k` move between threads, `r` replies, `x` resolves, `a` shows resolved
+ones too, `o` opens the document at the thread's line. `mdrev setup` binds it
+to `Alt+T` next to `Alt+C`.
+
 The same from a terminal:
 
 ```sh
 mdrev comment --file spec.md --quote "no more than 2" --type issue
 mdrev list spec.md
 mdrev reply --file spec.md --id 9b9e4214
+mdrev threads spec.md
 ```
 
 ## How it works in Zed

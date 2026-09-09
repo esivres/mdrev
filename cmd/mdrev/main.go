@@ -11,6 +11,7 @@ import (
 
 	"github.com/esivres/mdrev/internal/lsp"
 	"github.com/esivres/mdrev/internal/mrsf"
+	"github.com/esivres/mdrev/internal/tui"
 )
 
 const usage = `mdrev — review markdown: comments, questions and suggested edits.
@@ -21,6 +22,7 @@ Comments live in a sidecar next to the document; the document is never modified.
   mdrev comment [flags]     add a comment; text from stdin or --editor
   mdrev reply [flags]       reply in a thread
   mdrev list <file.md>      open comments; --json for an agent
+  mdrev threads <file.md>   browse threads, reply and resolve, in a terminal UI
   mdrev lsp                 language server, started by the editor
 
   mdrev <command> -h        flags of a command
@@ -56,6 +58,12 @@ func main() {
 			os.Exit(2)
 		}
 		err = printComments(os.Args[2:])
+	case "threads":
+		if len(os.Args) < 3 {
+			fmt.Fprint(os.Stderr, usage)
+			os.Exit(2)
+		}
+		err = tui.Run(os.Args[2])
 	case "comment":
 		err = addComment(os.Args[2:])
 	default:

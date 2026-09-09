@@ -30,6 +30,7 @@ servers keep running alongside mdrev, so Marksman stays useful.`
 
 const commentTask = "Comment on selection"
 const questionTask = "Question about selection"
+const threadsTask = "Review threads"
 
 // keyPresets are offered when init runs interactively. Anything else can be
 // typed in, or passed with --keys.
@@ -220,6 +221,14 @@ func splitKeys(value string) (comment, question string, err error) {
 	return comment, shiftVariant(comment), nil
 }
 
+// sameChord keeps the modifiers of a chosen shortcut and swaps the final key,
+// so the review bindings stay a family: alt-c and alt-t, or ctrl-alt-k and
+// ctrl-alt-t.
+func sameChord(key, letter string) string {
+	i := strings.LastIndex(key, "-")
+	return key[:i+1] + letter
+}
+
 func shiftVariant(key string) string {
 	if strings.Contains(key, "shift-") {
 		return ""
@@ -306,12 +315,24 @@ func zedTasks(exe string) string {
 	return mustJSON([]any{
 		task(commentTask),
 		task(questionTask, "--type", "question"),
+		// The thread browser is a full-screen UI, so it gets the centre pane
+		// rather than the dock, and takes no selection.
+		map[string]any{
+			"label":                 threadsTask,
+			"command":               exe,
+			"args":                  []string{"threads", "$ZED_FILE"},
+			"use_new_terminal":      false,
+			"allow_concurrent_runs": false,
+			"reveal":                "always",
+			"reveal_target":         "center",
+		},
 	})
 }
 
 func zedKeymap(comment, question string) string {
 	bindings := map[string]any{
-		comment: []any{"task::Spawn", map[string]any{"task_name": commentTask}},
+		comment:                 []any{"task::Spawn", map[string]any{"task_name": commentTask}},
+		sameChord(comment, "t"): []any{"task::Spawn", map[string]any{"task_name": threadsTask}},
 	}
 	if question != "" {
 		bindings[question] = []any{"task::Spawn", map[string]any{"task_name": questionTask}}
