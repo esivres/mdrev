@@ -16,7 +16,8 @@ import (
 const usage = `mdrev — review markdown: comments, questions and suggested edits.
 Comments live in a sidecar next to the document; the document is never modified.
 
-  mdrev init [flags]        set up the project: language server and editor tasks
+  mdrev setup [flags]       configure the editor once for this machine
+  mdrev init [flags]        prepare a project: instructions for coding agents
   mdrev comment [flags]     add a comment; text from stdin or --editor
   mdrev reply [flags]       reply in a thread
   mdrev list <file.md>      open comments; --json for an agent
@@ -43,6 +44,8 @@ func main() {
 		fmt.Print(usage)
 	case "lsp":
 		err = lsp.NewServer(os.Stdout).Run(os.Stdin)
+	case "setup":
+		err = setUpEditor(os.Args[2:])
 	case "init":
 		err = initProject(os.Args[2:])
 	case "reply":

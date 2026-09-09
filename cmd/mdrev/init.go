@@ -21,12 +21,12 @@ import (
 // several servers per language, so its link navigation survives.
 const hostExtension = "markdownlint"
 
-const hostNote = `Zed cannot register a language server from settings: only an extension can
-declare one. mdrev works around this by taking over the Markdownlint
-extension, which declares itself a server for Markdown, and overriding its
-binary. Install Markdownlint from the Zed extensions panel.
+const extensionNote = `Install it from the Zed extensions panel; Zed then starts mdrev for Markdown
+on its own, with no per-project settings.
 
-Other Markdown servers keep running alongside mdrev, so Marksman stays useful.`
+Until then mdrev borrows the ` + hostExtension + ` extension's server slot, which
+means that extension has to be installed instead. Either way other Markdown
+servers keep running alongside mdrev, so Marksman stays useful.`
 
 const commentTask = "Comment on selection"
 const questionTask = "Question about selection"
@@ -35,38 +35,28 @@ const questionTask = "Question about selection"
 // typed in, or passed with --keys.
 var keyPresets = []string{"alt-c", "ctrl-alt-c", "ctrl-shift-m"}
 
-func initProject(args []string) error {
-	fs := flag.NewFlagSet("init", flag.ExitOnError)
+// setUpEditor configures Zed once for the machine: tasks and shortcuts are
+// global, so no project needs to repeat them.
+func setUpEditor(args []string) error {
+	fs := flag.NewFlagSet("setup", flag.ExitOnError)
 	keys := fs.String("keys", "", "shortcut for the comment task, e.g. alt-c; a second one may follow after a comma")
-	writeKeymap := fs.Bool("write-keymap", false, "write the shortcuts into Zed's global keymap")
+	writeKeymap := fs.Bool("write-keymap", false, "write the shortcuts into Zed's keymap instead of printing them")
 	noKeymap := fs.Bool("no-keymap", false, "skip shortcuts entirely")
-	agentDocs := fs.String("agent-docs", "", "instructions for coding agents: agents | skill | both | none")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	exe, err := os.Executable()
+	exe, err := currentBinary()
 	if err != nil {
 		return err
 	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
-	}
-
-	if err := writeIfAbsent(filepath.Join(".zed", "settings.json"), zedSettings(exe, ownExtensionInstalled())); err != nil {
-		return err
-	}
-	if err := writeIfAbsent(filepath.Join(".zed", "tasks.json"), zedTasks(exe)); err != nil {
+	if err := writeIfAbsent(filepath.Join(zedConfigDir(), "tasks.json"), zedTasks(exe)); err != nil {
 		return err
 	}
 
-	if !ownExtensionInstalled() && !hostExtensionInstalled() {
-		fmt.Printf("\n! Neither the mdrev extension nor %s is installed.\n", hostExtension)
-		fmt.Println(hostNote)
-	}
-
-	if err := setUpAgentDocs(*agentDocs); err != nil {
-		return err
+	if !ownExtensionInstalled() {
+		fmt.Println("\n! The mdrev extension is not installed.")
+		fmt.Println(extensionNote)
 	}
 
 	if *noKeymap {
@@ -80,6 +70,50 @@ func initProject(args []string) error {
 		return nil
 	}
 	return applyKeymap(comment, question, *writeKeymap)
+}
+
+// initProject prepares one project. With the extension installed there is
+// nothing to configure for the editor here — Zed starts a server an extension
+// declares on its own — so this only installs agent instructions, and falls
+// back to borrowing another extension's server slot when ours is missing.
+func initProject(args []string) error {
+	fs := flag.NewFlagSet("init", flag.ExitOnError)
+	agentDocs := fs.String("agent-docs", "", "instructions for coding agents: agents | skill | both | none")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if !ownExtensionInstalled() {
+		exe, err := currentBinary()
+		if err != nil {
+			return err
+		}
+		fmt.Println("The mdrev extension is not installed; falling back to the " +
+			hostExtension + " server slot for this project.")
+		if err := writeIfAbsent(filepath.Join(".zed", "settings.json"), zedSettings(exe)); err != nil {
+			return err
+		}
+		if !hostExtensionInstalled() {
+			fmt.Println(extensionNote)
+		}
+	}
+
+	return setUpAgentDocs(*agentDocs)
+}
+
+func currentBinary() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	return exe, nil
+}
+
+func zedConfigDir() string {
+	return filepath.Join(os.Getenv("HOME"), ".config", "zed")
 }
 
 // setUpAgentDocs installs the instructions that tell a coding agent how to use
@@ -195,7 +229,7 @@ func shiftVariant(key string) string {
 }
 
 func applyKeymap(comment, question string, write bool) error {
-	path := filepath.Join(os.Getenv("HOME"), ".config", "zed", "keymap.json")
+	path := filepath.Join(zedConfigDir(), "keymap.json")
 	content := zedKeymap(comment, question)
 	if write {
 		return writeIfAbsent(path, content)
@@ -227,18 +261,9 @@ func hostExtensionInstalled() bool {
 	return err == nil
 }
 
-// zedSettings enables mdrev for Markdown. With our own extension installed the
-// server is simply named; without it we borrow another extension's slot, since
-// Zed will not register a server that no extension declares. Either way "..."
-// keeps the other Markdown servers running next to us.
-func zedSettings(exe string, ownExtension bool) string {
-	if ownExtension {
-		return mustJSON(map[string]any{
-			"languages": map[string]any{
-				"Markdown": map[string]any{"language_servers": []string{"mdrev", "..."}},
-			},
-		})
-	}
+// zedSettings borrows another extension's server slot, for when ours is not
+// installed. "..." keeps the other Markdown servers running next to us.
+func zedSettings(exe string) string {
 	return mustJSON(map[string]any{
 		"languages": map[string]any{
 			"Markdown": map[string]any{"language_servers": []string{hostExtension, "..."}},
