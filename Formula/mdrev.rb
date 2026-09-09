@@ -5,21 +5,21 @@
 class Mdrev < Formula
   desc "Review markdown documents — inline comments, questions and suggested edits"
   homepage "https://github.com/esivres/mdrev"
-  version "0.1.2"
+  version "0.1.3"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/esivres/mdrev/releases/download/v0.1.2/mdrev_0.1.2_darwin_amd64.tar.gz"
-      sha256 "f1056b732af81db6a7bb6168a85977011bbc5341655928e919e3a4669d30bcd9"
+      url "https://github.com/esivres/mdrev/releases/download/v0.1.3/mdrev_0.1.3_darwin_amd64.tar.gz"
+      sha256 "bf99cacd9364345e9b5115e76f3661f50754fa1bd10496bf48bc6dd93e407730"
 
       define_method(:install) do
         bin.install "mdrev"
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/esivres/mdrev/releases/download/v0.1.2/mdrev_0.1.2_darwin_arm64.tar.gz"
-      sha256 "a013b25d7c792fdc007b9bd706deaf03154dc985b096cb8aa5ab342efb198417"
+      url "https://github.com/esivres/mdrev/releases/download/v0.1.3/mdrev_0.1.3_darwin_arm64.tar.gz"
+      sha256 "b518b2bcc12e9f24a4b6438a9b037b36cf27df7ec6183ddb467b10e97c47d007"
 
       define_method(:install) do
         bin.install "mdrev"
@@ -29,15 +29,15 @@ class Mdrev < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/esivres/mdrev/releases/download/v0.1.2/mdrev_0.1.2_linux_amd64.tar.gz"
-      sha256 "51c597298331180dfdc0733833c15fde61e255e6ed395e6831c4c98e71498b92"
+      url "https://github.com/esivres/mdrev/releases/download/v0.1.3/mdrev_0.1.3_linux_amd64.tar.gz"
+      sha256 "0700a1f5d86a3e23ba0a078ef600a98aca488ac5664d5ff3318f74d96365dd3d"
       define_method(:install) do
         bin.install "mdrev"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/esivres/mdrev/releases/download/v0.1.2/mdrev_0.1.2_linux_arm64.tar.gz"
-      sha256 "b51a13d73742e8b206624f9f1a286d386d2545ef2d11aabc0ccf7624da140e22"
+      url "https://github.com/esivres/mdrev/releases/download/v0.1.3/mdrev_0.1.3_linux_arm64.tar.gz"
+      sha256 "23e93810c00f348d3c355a1ed35ceba9736e9cfbf0a05e0a1c7711eacd0527ea"
       define_method(:install) do
         bin.install "mdrev"
       end
