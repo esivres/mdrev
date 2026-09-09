@@ -1,6 +1,6 @@
 Documents in this project are reviewed with `mdrev`. Review comments live in a
 sidecar next to the document (`doc.md.review.yaml`), never inside the document.
-
+:Today
 **Never edit the sidecar by hand** — it is a specified format with anchor
 hashes that the commands maintain.
 

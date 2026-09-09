@@ -10,7 +10,7 @@ Configures Zed once for the machine: writes the review tasks into
 
 | flag | meaning |
 |---|---|
-| `--keys alt-c` | shortcut for the comment task; a second one may follow after a comma, otherwise the shift variant is derived |
+| `--keys alt-c` | shortcut {>>rjvvt<<} for the comment task; a second one may follow after a comma, otherwise the shift variant is derived |
 | `--write-keymap` | write the shortcuts into `~/.config/zed/keymap.json` instead of printing them |
 | `--no-keymap` | skip shortcuts entirely |
 

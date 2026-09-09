@@ -71,6 +71,35 @@ func (li *lineIndex) lineRange(line1 int) Range {
 // locate resolves a comment's anchor against the current document text. It
 // prefers the occurrence nearest the recorded line, which is what keeps
 // anchors stable when a phrase repeats in the document.
+// locateOffsets is locate in byte offsets, which is what a code action needs to
+// carry across a resolve round trip.
+func locateOffsets(li *lineIndex, c mrsf.Comment) (start, end int, ok bool) {
+	if c.SelectedText == "" {
+		return 0, 0, false
+	}
+	best := -1
+	bestDist := 1 << 30
+	for off := 0; ; {
+		i := strings.Index(li.text[off:], c.SelectedText)
+		if i < 0 {
+			break
+		}
+		abs := off + i
+		dist := li.position(abs).Line + 1 - c.Line
+		if dist < 0 {
+			dist = -dist
+		}
+		if dist < bestDist {
+			bestDist, best = dist, abs
+		}
+		off = abs + 1
+	}
+	if best < 0 {
+		return 0, 0, false
+	}
+	return best, best + len(c.SelectedText), true
+}
+
 func locate(li *lineIndex, c mrsf.Comment) (Range, bool) {
 	if c.SelectedText == "" {
 		return li.lineRange(c.Line), false

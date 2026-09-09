@@ -35,12 +35,12 @@ const questionTask = "Question about selection"
 const threadsTask = "Review threads"
 
 // Offered interactively; anything else comes from --keys.
-var keyPresets = []string{"alt-c", "ctrl-alt-c", "ctrl-shift-m"}
+var keyPresets = []string{"alt-c", "ctrl-alt-c", "ctrl-alt-shift-c,ctrl-alt-shift-q,ctrl-alt-shift-r"}
 
 // setUpEditor configures Zed once per machine: tasks and shortcuts are global.
 func setUpEditor(args []string) error {
 	fs := flag.NewFlagSet("setup", flag.ExitOnError)
-	keys := fs.String("keys", "", "shortcut for the comment task, e.g. alt-c; a second one may follow after a comma")
+	keys := fs.String("keys", "", "shortcuts as comment[,question[,threads]], e.g. alt-c or alt-c,alt-shift-c,alt-r")
 	writeKeymap := fs.Bool("write-keymap", false, "write the shortcuts into Zed's keymap instead of printing them")
 	noKeymap := fs.Bool("no-keymap", false, "skip shortcuts entirely")
 	if err := fs.Parse(args); err != nil {
@@ -51,7 +51,7 @@ func setUpEditor(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := writeIfAbsent(filepath.Join(zedConfigDir(), "tasks.json"), zedTasks(exe)); err != nil {
+	if err := mergeBlock(filepath.Join(zedConfigDir(), "tasks.json"), zedTasks(exe)); err != nil {
 		return err
 	}
 
@@ -63,14 +63,14 @@ func setUpEditor(args []string) error {
 	if *noKeymap {
 		return nil
 	}
-	comment, question, err := chooseKeys(*keys)
+	comment, question, threads, err := chooseKeys(*keys)
 	if err != nil {
 		return err
 	}
 	if comment == "" {
 		return nil
 	}
-	return applyKeymap(comment, question, *writeKeymap)
+	return applyKeymap(comment, question, threads, *writeKeymap)
 }
 
 // initProject prepares one project. Zed starts a server an extension declares
@@ -158,7 +158,7 @@ func setUpAgentDocs(choice string) error {
 }
 
 // An empty comment key means "no shortcuts".
-func chooseKeys(flagValue string) (comment, question string, err error) {
+func chooseKeys(flagValue string) (comment, question, threads string, err error) {
 	if flagValue != "" {
 		return splitKeys(flagValue)
 	}
@@ -166,13 +166,14 @@ func chooseKeys(flagValue string) (comment, question string, err error) {
 		return splitKeys(keyPresets[0])
 	}
 
-	fmt.Println("\nShortcut for commenting on a selection:")
+	fmt.Println("\nShortcuts for commenting, asking, and the thread browser:")
 	for i, k := range keyPresets {
+		c, q, t, _ := splitKeys(k)
 		suffix := ""
 		if i == 0 {
 			suffix = "  (default)"
 		}
-		fmt.Printf("  %d) %s%s\n", i+1, k, suffix)
+		fmt.Printf("  %d) %s, %s, %s%s\n", i+1, c, q, t, suffix)
 	}
 	fmt.Printf("  %d) enter your own\n", len(keyPresets)+1)
 	fmt.Printf("  %d) no shortcuts\n", len(keyPresets)+2)
@@ -186,41 +187,51 @@ func chooseKeys(flagValue string) (comment, question string, err error) {
 	if choice == "" {
 		return splitKeys(keyPresets[0])
 	}
-	n, err := strconv.Atoi(choice)
-	if err != nil {
-		return "", "", fmt.Errorf("unknown choice %q", choice)
+	n, convErr := strconv.Atoi(choice)
+	if convErr != nil {
+		return "", "", "", fmt.Errorf("unknown choice %q", choice)
 	}
 	switch {
 	case n >= 1 && n <= len(keyPresets):
 		return splitKeys(keyPresets[n-1])
 	case n == len(keyPresets)+1:
-		fmt.Print("Shortcut (Zed syntax, e.g. ctrl-alt-k): ")
+		fmt.Println("Shortcuts, comma separated: comment[,question[,threads]]")
+		fmt.Print("> ")
 		if !in.Scan() {
-			return "", "", fmt.Errorf("no shortcut given")
+			return "", "", "", fmt.Errorf("no shortcut given")
 		}
 		return splitKeys(strings.TrimSpace(in.Text()))
 	case n == len(keyPresets)+2:
-		return "", "", nil
+		return "", "", "", nil
 	default:
-		return "", "", fmt.Errorf("unknown choice %q", choice)
+		return "", "", "", fmt.Errorf("unknown choice %q", choice)
 	}
 }
 
-// Accepts "alt-c" or "alt-c,alt-shift-c"; one key derives the other.
-func splitKeys(value string) (comment, question string, err error) {
+// Accepts one to three keys. Given fewer, the rest are derived from the first,
+// which keeps them a family: alt-c, alt-shift-c, alt-t.
+func splitKeys(value string) (comment, question, threads string, err error) {
 	parts := strings.Split(value, ",")
-	comment = strings.TrimSpace(parts[0])
-	if comment == "" {
-		return "", "", fmt.Errorf("empty shortcut")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
 	}
-	if len(parts) > 1 {
-		return comment, strings.TrimSpace(parts[1]), nil
+	comment = parts[0]
+	if comment == "" {
+		return "", "", "", fmt.Errorf("empty shortcut")
 	}
 	if !strings.Contains(comment, "-") {
 		// Deriving from a bare key would produce bare letters and shadow vim.
-		return "", "", fmt.Errorf("shortcut %q has no modifier; use something like alt-c", comment)
+		return "", "", "", fmt.Errorf("shortcut %q has no modifier; use something like alt-c", comment)
 	}
-	return comment, shiftVariant(comment), nil
+
+	question, threads = shiftVariant(comment), sameChord(comment, "t")
+	if len(parts) > 1 && parts[1] != "" {
+		question = parts[1]
+	}
+	if len(parts) > 2 && parts[2] != "" {
+		threads = parts[2]
+	}
+	return comment, question, threads, nil
 }
 
 // Keeps the modifiers and swaps the final key, so the bindings stay a family.
@@ -237,13 +248,19 @@ func shiftVariant(key string) string {
 	return key[:i+1] + "shift-" + key[i+1:]
 }
 
-func applyKeymap(comment, question string, write bool) error {
+func applyKeymap(comment, question, threads string, write bool) error {
 	path := filepath.Join(zedConfigDir(), "keymap.json")
-	content := zedKeymap(comment, question)
-	if write {
-		return writeIfAbsent(path, content)
+	if taken := conflicts(path, []string{comment, question, threads}); len(taken) > 0 {
+		fmt.Printf("\n! %s already appear in your keymap; ours will take precedence in the editor.\n",
+			strings.Join(taken, ", "))
+		fmt.Println("  Pick others with --keys comment,question,threads")
 	}
-	fmt.Printf("\nZed keymaps are global. Add to %s:\n%s\n", path, content)
+
+	entries := zedKeymap(comment, question, threads)
+	if write {
+		return mergeBlock(path, entries)
+	}
+	fmt.Printf("\nZed keymaps are global. Add to %s, or rerun with --write-keymap:\n%s\n", path, entries)
 	return nil
 }
 
@@ -309,7 +326,7 @@ func zedTasks(exe string) string {
 			"reveal_target":         "dock",
 		}
 	}
-	return mustJSON([]any{
+	return entriesJSON([]any{
 		task(commentTask),
 		task(questionTask, "--type", "question"),
 		// Takes no selection, and lives in the dock beside the document.
@@ -327,19 +344,33 @@ func zedTasks(exe string) string {
 
 // Bound twice: under "Editor" alone nothing fires in vim's normal or visual
 // mode, where the vim layer takes the key first.
-func zedKeymap(comment, question string) string {
+// Bound twice: under "Editor" alone nothing fires in vim's normal or visual
+// mode, where the vim layer takes the key first.
+func zedKeymap(comment, question, threads string) string {
 	bindings := map[string]any{
-		comment:                 []any{"task::Spawn", map[string]any{"task_name": commentTask}},
-		sameChord(comment, "t"): []any{"task::Spawn", map[string]any{"task_name": threadsTask}},
+		comment: []any{"task::Spawn", map[string]any{"task_name": commentTask}},
 	}
 	if question != "" {
 		bindings[question] = []any{"task::Spawn", map[string]any{"task_name": questionTask}}
 	}
+	if threads != "" {
+		bindings[threads] = []any{"task::Spawn", map[string]any{"task_name": threadsTask}}
+	}
 
-	return mustJSON([]any{
+	return entriesJSON([]any{
 		map[string]any{"context": "Editor && !VimControl", "bindings": bindings},
 		map[string]any{"context": "VimControl && !menu", "bindings": bindings},
 	})
+}
+
+// entriesJSON renders array elements without the surrounding brackets, so they
+// can be spliced into a file that already has some.
+func entriesJSON(items []any) string {
+	rendered := make([]string, 0, len(items))
+	for _, item := range items {
+		rendered = append(rendered, strings.TrimSuffix(mustJSON(item), "\n"))
+	}
+	return strings.Join(rendered, ",\n")
 }
 
 func mustJSON(v any) string {

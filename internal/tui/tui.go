@@ -59,6 +59,7 @@ var (
 	quoteStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	authorStyle   = lipgloss.NewStyle().Bold(true)
 	suggestStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	conflictStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	contextStyle  = lipgloss.NewStyle().Faint(true).Border(lipgloss.NormalBorder(), false, false, false, true).
 			BorderForeground(lipgloss.Color("8")).PaddingLeft(1)
 	listStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, true, false, false).

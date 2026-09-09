@@ -42,9 +42,10 @@ func TestEmptyDraftIsIgnored(t *testing.T) {
 	}
 }
 
-// Filing must remove the marker from the document, or the comment would exist
-// twice: once in the sidecar and once as leftover markup.
-func TestFilingRemovesTheMarkerAndItsSpace(t *testing.T) {
+// Filing must remove the marker together with one leading space, or an inline
+// comment leaves a double space behind. The offsets travel in the action's
+// data, because the edit itself is only produced when the client resolves it.
+func TestFilingCoversTheMarkerAndItsSpace(t *testing.T) {
 	text := "Latency p99 must not exceed 200 ms. {>>too optimistic<<}\n"
 	li := newLineIndex(text)
 
@@ -54,14 +55,13 @@ func TestFilingRemovesTheMarkerAndItsSpace(t *testing.T) {
 	}
 
 	action := fileDraftAction("file:///doc.md", li, drafts[0])
-	edits := action.Edit.Changes["file:///doc.md"]
-	if len(edits) != 1 || edits[0].NewText != "" {
-		t.Fatalf("want a single deletion, got %+v", edits)
+	if action.Edit != nil || action.Command != nil {
+		t.Error("an action carrying both an edit and a command loses its command in Zed")
 	}
-	if got, want := edits[0].Range.Start.Character, len("Latency p99 must not exceed 200 ms."); got != want {
+	if got, want := action.Data.Start, len("Latency p99 must not exceed 200 ms."); got != want {
 		t.Errorf("deletion must swallow the space before the marker: got %d, want %d", got, want)
 	}
-	if got, want := edits[0].Range.End.Character, len(text)-1; got != want {
+	if got, want := action.Data.End, len(text)-1; got != want {
 		t.Errorf("deletion must cover the whole marker: got %d, want %d", got, want)
 	}
 }

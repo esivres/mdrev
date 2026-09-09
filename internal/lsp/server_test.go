@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/esivres/mdrev/internal/mrsf"
 )
 
 const doc = `# Заголовок
@@ -134,4 +136,83 @@ func diagnosticsFor(t *testing.T, path, text string) []Diagnostic {
 
 func frame(buf *bytes.Buffer, body string) {
 	fmt.Fprintf(buf, "Content-Length: %d\r\n\r\n%s", len(body), body)
+}
+
+// Zed applies a code action's edit and returns without running its command, so
+// an action that must both write and edit has to do the write when the client
+// resolves it. Getting this wrong deleted the comment from the document and
+// recorded nothing.
+func TestFilingADraftWritesAndEditsOnResolve(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	text := "The service accepts raw input. {>>whose input?<<}\n"
+	write(t, path, text)
+	uri := "file://" + path
+
+	s := NewServer(&bytes.Buffer{})
+	s.setDoc(uri, text)
+
+	params, _ := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range": map[string]any{
+			"start": map[string]any{"line": 0, "character": 33},
+			"end":   map[string]any{"line": 0, "character": 33},
+		},
+	})
+	actions := s.codeActions(params)
+	if len(actions) != 1 {
+		t.Fatalf("want the filing action, got %+v", actions)
+	}
+	if actions[0].Edit != nil || actions[0].Command != nil {
+		t.Error("the action must carry neither an edit nor a command before resolve")
+	}
+
+	raw, _ := json.Marshal(actions[0])
+	resolved, ok := s.resolveCodeAction(raw).(CodeAction)
+	if !ok || resolved.Edit == nil {
+		t.Fatalf("resolve must return the edit, got %+v", resolved)
+	}
+
+	sc, err := mrsf.Load(path)
+	if err != nil || sc == nil {
+		t.Fatalf("the comment must be recorded: %v", err)
+	}
+	if len(sc.Comments) != 1 || sc.Comments[0].Text != "whose input?" {
+		t.Errorf("recorded comment: %+v", sc.Comments)
+	}
+	if edits := resolved.Edit.Changes[uri]; len(edits) != 1 || edits[0].NewText != "" {
+		t.Errorf("the edit must remove the marker, got %+v", edits)
+	}
+}
+
+// If the write fails there must be no edit: the marker stays on screen instead
+// of being deleted along with the comment it carried.
+func TestFailedFilingLeavesTheDocumentAlone(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	text := "Some prose. {>>note<<}\n"
+	write(t, path, text)
+	uri := "file://" + path
+
+	s := NewServer(&bytes.Buffer{})
+	s.setDoc(uri, text)
+	write(t, path+".review.yaml", "this: is: not: valid: yaml\n")
+
+	params, _ := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range": map[string]any{
+			"start": map[string]any{"line": 0, "character": 14},
+			"end":   map[string]any{"line": 0, "character": 14},
+		},
+	})
+	actions := s.codeActions(params)
+	if len(actions) == 0 {
+		t.Fatal("expected the filing action")
+	}
+	raw, _ := json.Marshal(actions[0])
+	resolved := s.resolveCodeAction(raw).(CodeAction)
+
+	if resolved.Edit != nil {
+		t.Error("a failed write must not delete the marker from the document")
+	}
 }

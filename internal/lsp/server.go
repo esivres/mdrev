@@ -56,6 +56,21 @@ type CodeAction struct {
 	Diagnostics []Diagnostic   `json:"diagnostics,omitempty"`
 	Edit        *WorkspaceEdit `json:"edit,omitempty"`
 	Command     *Command       `json:"command,omitempty"`
+	Data        *actionData    `json:"data,omitempty"`
+}
+
+// actionData carries what an action needs to do its work when the client comes
+// back to resolve it.
+type actionData struct {
+	Kind    string `json:"kind"` // "apply" or "file"
+	URI     string `json:"uri"`
+	ID      string `json:"id,omitempty"`
+	Anchor  string `json:"anchor,omitempty"`
+	Text    string `json:"text,omitempty"`
+	Line    int    `json:"line,omitempty"`
+	Start   int    `json:"start,omitempty"`
+	End     int    `json:"end,omitempty"`
+	NewText string `json:"newText,omitempty"`
 }
 
 type rpcMessage struct {
@@ -225,7 +240,10 @@ func (s *Server) handle(msg *rpcMessage) {
 					"change":    1, // full text
 					"save":      map[string]any{"includeText": false},
 				},
-				"codeActionProvider": true,
+				// Zed applies an action's edit and returns without running its
+				// command, so an action that must do both is offered without an
+				// edit and resolved on demand instead.
+				"codeActionProvider": map[string]any{"resolveProvider": true},
 				"executeCommandProvider": map[string]any{
 					"commands": []string{"mdrev.resolve", "mdrev.file"},
 				},
@@ -289,6 +307,8 @@ func (s *Server) handle(msg *rpcMessage) {
 		s.mu.Unlock()
 	case "textDocument/codeAction":
 		s.reply(msg.ID, s.codeActions(msg.Params))
+	case "codeAction/resolve":
+		s.reply(msg.ID, s.resolveCodeAction(msg.Params))
 	case "workspace/executeCommand":
 		s.reply(msg.ID, s.executeCommand(msg.Params))
 	default:
@@ -481,18 +501,17 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 		}
 		suggested, hasSuggestion := c.SuggestedText()
 		if hasSuggestion && anchored {
-			actions = append(actions, CodeAction{
-				Title: "Apply suggestion: " + summary(suggested),
-				Kind:  "quickfix",
-				Edit: &WorkspaceEdit{Changes: map[string][]TextEdit{
-					uri: {{Range: rng, NewText: suggested}},
-				}},
-				Command: &Command{
-					Title:     "resolve",
-					Command:   "mdrev.resolve",
-					Arguments: []any{uri, c.ID, mrsf.OutcomeApplied},
-				},
-			})
+			start, end, found := locateOffsets(li, c)
+			if found {
+				actions = append(actions, CodeAction{
+					Title: "Apply suggestion: " + summary(suggested),
+					Kind:  "quickfix",
+					Data: &actionData{
+						Kind: "apply", URI: uri, ID: c.ID, NewText: suggested,
+						Start: start, End: end,
+					},
+				})
+			}
 		}
 		// Turning down a proposal is a different decision from closing a
 		// remark you have dealt with.
@@ -534,20 +553,79 @@ func fileDraftAction(uri string, li *lineIndex, dr draft) CodeAction {
 	if from > 0 && li.text[from-1] == ' ' {
 		from--
 	}
-	line := li.position(dr.Start).Line + 1
 
 	return CodeAction{
 		Title: "File as review comment",
 		Kind:  "quickfix",
-		Edit: &WorkspaceEdit{Changes: map[string][]TextEdit{
-			uri: {{Range: Range{Start: li.position(from), End: li.position(dr.End)}, NewText: ""}},
-		}},
-		Command: &Command{
-			Title:     "file",
-			Command:   "mdrev.file",
-			Arguments: []any{uri, dr.Anchor, dr.Text, strconv.Itoa(line)},
+		Data: &actionData{
+			Kind: "file", URI: uri, Anchor: dr.Anchor, Text: dr.Text,
+			Line: li.position(dr.Start).Line + 1, Start: from, End: dr.End,
 		},
 	}
+}
+
+// resolveCodeAction fills in the edit the client asked for, and performs the
+// write that goes with it. Both have to happen here: Zed applies an edit and
+// never runs the action's command, so an action carrying both would silently
+// do half its work.
+func (s *Server) resolveCodeAction(params json.RawMessage) any {
+	var action CodeAction
+	if err := json.Unmarshal(params, &action); err != nil {
+		s.tracef("resolve action: %v", err)
+		return action
+	}
+	if action.Data == nil {
+		return action
+	}
+	d := action.Data
+	path := uriToPath(d.URI)
+
+	s.mu.Lock()
+	text, open := s.docs[d.URI]
+	s.mu.Unlock()
+	if !open {
+		return action
+	}
+	li := newLineIndex(text)
+
+	var err error
+	switch d.Kind {
+	case "apply":
+		err = mrsf.Update(path, func(sc *mrsf.Sidecar) error {
+			if c := sc.Find(d.ID); c != nil {
+				c.Resolved = true
+				c.SetOutcome(mrsf.OutcomeApplied)
+			}
+			return nil
+		})
+	case "file":
+		err = mrsf.Update(path, func(sc *mrsf.Sidecar) error {
+			_, addErr := sc.Add(mrsf.Comment{
+				Author:       mrsf.DefaultAuthor(),
+				Text:         d.Text,
+				Line:         d.Line,
+				SelectedText: d.Anchor,
+			})
+			return addErr
+		})
+	default:
+		return action
+	}
+	if err != nil {
+		// Returning no edit leaves the document as it is, so the comment is
+		// still on screen rather than deleted along with the failure.
+		s.tracef("resolve %s: %v", d.Kind, err)
+		return action
+	}
+
+	action.Edit = &WorkspaceEdit{Changes: map[string][]TextEdit{
+		d.URI: {{
+			Range:   Range{Start: li.position(d.Start), End: li.position(d.End)},
+			NewText: d.NewText,
+		}},
+	}}
+	s.publish(d.URI)
+	return action
 }
 
 // summary labels a menu entry.
