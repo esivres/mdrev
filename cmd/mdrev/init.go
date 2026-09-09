@@ -15,13 +15,10 @@ import (
 	"github.com/esivres/mdrev/internal/agentdocs"
 )
 
-// hostExtension is the extension whose language server slot mdrev occupies.
-// Zed only lets an extension declare a server, and mdrev has none of its own
-// yet, so it overrides the binary of one that does. Markdownlint is chosen
-// over Marksman because Marksman is worth keeping alive alongside us: Zed runs
-// several servers per language, so its link navigation survives.
-// extensionID is how the extension registers itself; the registry requires a
-// language-server-only extension to say so in its id.
+// Whose language server slot mdrev borrows when its own extension is missing.
+// Markdownlint rather than Marksman: Zed runs several servers per language, so
+// Marksman's link navigation is worth keeping alive alongside us.
+// The registry requires a language-server-only extension to say so in its id.
 const extensionID = "mdrev-language-server"
 
 const hostExtension = "markdownlint"
@@ -37,12 +34,10 @@ const commentTask = "Comment on selection"
 const questionTask = "Question about selection"
 const threadsTask = "Review threads"
 
-// keyPresets are offered when init runs interactively. Anything else can be
-// typed in, or passed with --keys.
+// Offered interactively; anything else comes from --keys.
 var keyPresets = []string{"alt-c", "ctrl-alt-c", "ctrl-shift-m"}
 
-// setUpEditor configures Zed once for the machine: tasks and shortcuts are
-// global, so no project needs to repeat them.
+// setUpEditor configures Zed once per machine: tasks and shortcuts are global.
 func setUpEditor(args []string) error {
 	fs := flag.NewFlagSet("setup", flag.ExitOnError)
 	keys := fs.String("keys", "", "shortcut for the comment task, e.g. alt-c; a second one may follow after a comma")
@@ -78,10 +73,9 @@ func setUpEditor(args []string) error {
 	return applyKeymap(comment, question, *writeKeymap)
 }
 
-// initProject prepares one project. With the extension installed there is
-// nothing to configure for the editor here — Zed starts a server an extension
-// declares on its own — so this only installs agent instructions, and falls
-// back to borrowing another extension's server slot when ours is missing.
+// initProject prepares one project. Zed starts a server an extension declares
+// without any settings, so with our extension installed this only installs
+// agent instructions.
 func initProject(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	agentDocs := fs.String("agent-docs", "", "instructions for coding agents: agents | skill | both | none")
@@ -118,8 +112,7 @@ func currentBinary() (string, error) {
 	return exe, nil
 }
 
-// setUpAgentDocs installs the instructions that tell a coding agent how to use
-// mdrev, so the human does not have to explain it in every session.
+// So the human does not explain mdrev in every session.
 func setUpAgentDocs(choice string) error {
 	if choice == "" {
 		if !term.IsTerminal(int(os.Stdin.Fd())) {
@@ -164,8 +157,7 @@ func setUpAgentDocs(choice string) error {
 	}
 }
 
-// chooseKeys resolves the shortcuts from --keys, or asks when stdin is a
-// terminal. Returning an empty comment key means "no shortcuts".
+// An empty comment key means "no shortcuts".
 func chooseKeys(flagValue string) (comment, question string, err error) {
 	if flagValue != "" {
 		return splitKeys(flagValue)
@@ -214,8 +206,7 @@ func chooseKeys(flagValue string) (comment, question string, err error) {
 	}
 }
 
-// splitKeys accepts "alt-c" or "alt-c,alt-shift-c". With one key given, the
-// question shortcut is its shift variant.
+// Accepts "alt-c" or "alt-c,alt-shift-c"; one key derives the other.
 func splitKeys(value string) (comment, question string, err error) {
 	parts := strings.Split(value, ",")
 	comment = strings.TrimSpace(parts[0])
@@ -226,16 +217,13 @@ func splitKeys(value string) (comment, question string, err error) {
 		return comment, strings.TrimSpace(parts[1]), nil
 	}
 	if !strings.Contains(comment, "-") {
-		// The other shortcuts are derived by swapping the final key, which for
-		// a bare key would produce bare letters and shadow vim motions.
+		// Deriving from a bare key would produce bare letters and shadow vim.
 		return "", "", fmt.Errorf("shortcut %q has no modifier; use something like alt-c", comment)
 	}
 	return comment, shiftVariant(comment), nil
 }
 
-// sameChord keeps the modifiers of a chosen shortcut and swaps the final key,
-// so the review bindings stay a family: alt-c and alt-t, or ctrl-alt-k and
-// ctrl-alt-t.
+// Keeps the modifiers and swaps the final key, so the bindings stay a family.
 func sameChord(key, letter string) string {
 	i := strings.LastIndex(key, "-")
 	return key[:i+1] + letter
@@ -259,8 +247,8 @@ func applyKeymap(comment, question string, write bool) error {
 	return nil
 }
 
-// writeIfAbsent never overwrites: these files usually hold the user's own
-// settings, and merging JSON blind is worse than printing what to paste.
+// Never overwrites: these hold the user's own settings, and merging JSON
+// blind is worse than printing what to paste.
 func writeIfAbsent(path, content string) error {
 	if _, err := os.Stat(path); err == nil {
 		fmt.Printf("\n%s exists, leaving it alone. Add this:\n%s\n", path, content)
@@ -281,8 +269,7 @@ func hostExtensionInstalled() bool {
 	return err == nil
 }
 
-// zedSettings borrows another extension's server slot, for when ours is not
-// installed. "..." keeps the other Markdown servers running next to us.
+// Borrows another extension's server slot; "..." keeps the rest running.
 func zedSettings(exe string) string {
 	return mustJSON(map[string]any{
 		"languages": map[string]any{
@@ -325,8 +312,7 @@ func zedTasks(exe string) string {
 	return mustJSON([]any{
 		task(commentTask),
 		task(questionTask, "--type", "question"),
-		// The thread browser takes no selection, and lives in the dock beside
-		// the document rather than as an editor tab.
+		// Takes no selection, and lives in the dock beside the document.
 		map[string]any{
 			"label":                 threadsTask,
 			"command":               exe,
@@ -339,9 +325,8 @@ func zedTasks(exe string) string {
 	})
 }
 
-// zedKeymap binds the review shortcuts twice: once for the plain editor and
-// once for vim's contexts. Bindings under "Editor" alone never fire in vim's
-// normal or visual mode, where the vim layer takes the key first.
+// Bound twice: under "Editor" alone nothing fires in vim's normal or visual
+// mode, where the vim layer takes the key first.
 func zedKeymap(comment, question string) string {
 	bindings := map[string]any{
 		comment:                 []any{"task::Spawn", map[string]any{"task_name": commentTask}},

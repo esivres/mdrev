@@ -8,9 +8,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// flock is used rather than a POSIX fcntl lock because fcntl locks are held per
-// process: the language server's request handler and its watcher goroutine
-// would not be locked against each other at all.
+// flock, not fcntl: fcntl locks are per process, so the language server's
+// handler and its watcher goroutine would not be separated at all.
 func tryLock(f *os.File) (bool, error) {
 	err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
 	switch err {

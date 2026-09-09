@@ -1,11 +1,11 @@
-// Package lsp implements the language server that surfaces MRSF review
-// comments as editor diagnostics, with code actions to apply or dismiss
-// suggested edits.
+// Package lsp surfaces review comments as editor diagnostics, with code
+// actions to apply a suggestion, close a thread, or file a typed-in comment.
 package lsp
 
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -63,9 +63,8 @@ type rpcMessage struct {
 	ID      json.RawMessage `json:"id,omitempty"`
 	Method  string          `json:"method,omitempty"`
 	Params  json.RawMessage `json:"params,omitempty"`
-	// Result is a raw message rather than any: a response must carry exactly
-	// one of result or error, and an omitted result is a protocol error even
-	// when the request has nothing to return.
+	// Raw rather than any: a response must carry exactly one of result or
+	// error, so a nil result still has to be written as null.
 	Result json.RawMessage `json:"result,omitempty"`
 	Error  *rpcError       `json:"error,omitempty"`
 }
@@ -94,7 +93,7 @@ func NewServer(out io.Writer) *Server {
 		done:      make(chan struct{}),
 		stopped:   make(chan struct{}),
 	}
-	// Zed shows nothing from a language server's stderr, so keep a trace file.
+	// Zed shows nothing from a server's stderr.
 	if f, err := os.OpenFile(filepath.Join(os.TempDir(), "mdrev-lsp.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
 		s.log = f
@@ -106,19 +105,20 @@ func (s *Server) tracef(format string, args ...any) {
 	if s.log == nil {
 		return
 	}
-	fmt.Fprintf(s.log, time.Now().Format("15:04:05.000")+" "+format+"\n", args...)
+	_, _ = fmt.Fprintf(s.log, time.Now().Format("15:04:05.000")+" "+format+"\n", args...)
 }
 
 func (s *Server) Run(r io.Reader) error {
-	// The watcher writes to the same stream, so the flush is only final once it
-	// has actually stopped — signalling it is not enough, it may be midway
-	// through building a message.
+	// The watcher writes to the same stream, and may be midway through a
+	// message, so signalling it is not enough.
 	defer func() {
 		close(s.done)
 		<-s.stopped
 		s.outMu.Lock()
 		defer s.outMu.Unlock()
-		s.out.Flush()
+		if err := s.out.Flush(); err != nil {
+			s.tracef("final flush: %v", err)
+		}
 	}()
 	s.tracef("started pid=%d", os.Getpid())
 	go s.watchSidecars()
@@ -126,7 +126,7 @@ func (s *Server) Run(r io.Reader) error {
 	br := bufio.NewReader(r)
 	for {
 		msg, err := readMessage(br)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
@@ -148,7 +148,9 @@ func readMessage(r *bufio.Reader) (*rpcMessage, error) {
 			break
 		}
 		if v, ok := strings.CutPrefix(line, "Content-Length:"); ok {
-			fmt.Sscanf(strings.TrimSpace(v), "%d", &length)
+			if _, err := fmt.Sscanf(strings.TrimSpace(v), "%d", &length); err != nil {
+				return nil, fmt.Errorf("bad Content-Length %q: %w", v, err)
+			}
 		}
 	}
 	if length < 0 {
@@ -174,9 +176,17 @@ func (s *Server) send(msg rpcMessage) {
 	}
 	s.outMu.Lock()
 	defer s.outMu.Unlock()
-	fmt.Fprintf(s.out, "Content-Length: %d\r\n\r\n", len(body))
-	s.out.Write(body)
-	s.out.Flush()
+	if _, err := fmt.Fprintf(s.out, "Content-Length: %d\r\n\r\n", len(body)); err != nil {
+		s.tracef("write header: %v", err)
+		return
+	}
+	if _, err := s.out.Write(body); err != nil {
+		s.tracef("write body: %v", err)
+		return
+	}
+	if err := s.out.Flush(); err != nil {
+		s.tracef("flush: %v", err)
+	}
 }
 
 func (s *Server) reply(id json.RawMessage, result any) {
@@ -193,14 +203,23 @@ func (s *Server) notify(method string, params any) {
 	s.send(rpcMessage{Method: method, Params: raw})
 }
 
+// A malformed message would otherwise be acted on with zero values — a
+// document stored under an empty URI, say — leaving no trace.
+func (s *Server) decode(msg *rpcMessage, target any) bool {
+	if err := json.Unmarshal(msg.Params, target); err != nil {
+		s.tracef("%s: %v", msg.Method, err)
+		return false
+	}
+	return true
+}
+
 func (s *Server) handle(msg *rpcMessage) {
 	switch msg.Method {
 	case "initialize":
 		s.reply(msg.ID, map[string]any{
 			"capabilities": map[string]any{
-				// Spelled out rather than the deprecated number form, so that
-				// clients actually send didSave, which is when applied
-				// suggestions get closed.
+				// Spelled out rather than the deprecated number form, so
+				// clients actually send didSave.
 				"textDocumentSync": map[string]any{
 					"openClose": true,
 					"change":    1, // full text
@@ -224,7 +243,9 @@ func (s *Server) handle(msg *rpcMessage) {
 				Text string `json:"text"`
 			} `json:"textDocument"`
 		}
-		json.Unmarshal(msg.Params, &p)
+		if !s.decode(msg, &p) {
+			return
+		}
 		s.setDoc(p.TextDocument.URI, p.TextDocument.Text)
 		s.publish(p.TextDocument.URI)
 	case "textDocument/didChange":
@@ -236,7 +257,9 @@ func (s *Server) handle(msg *rpcMessage) {
 				Text string `json:"text"`
 			} `json:"contentChanges"`
 		}
-		json.Unmarshal(msg.Params, &p)
+		if !s.decode(msg, &p) {
+			return
+		}
 		if len(p.ContentChanges) > 0 {
 			s.setDoc(p.TextDocument.URI, p.ContentChanges[len(p.ContentChanges)-1].Text)
 			s.publish(p.TextDocument.URI)
@@ -247,7 +270,9 @@ func (s *Server) handle(msg *rpcMessage) {
 				URI string `json:"uri"`
 			} `json:"textDocument"`
 		}
-		json.Unmarshal(msg.Params, &p)
+		if !s.decode(msg, &p) {
+			return
+		}
 		s.publish(p.TextDocument.URI)
 	case "textDocument/didClose":
 		var p struct {
@@ -255,7 +280,9 @@ func (s *Server) handle(msg *rpcMessage) {
 				URI string `json:"uri"`
 			} `json:"textDocument"`
 		}
-		json.Unmarshal(msg.Params, &p)
+		if !s.decode(msg, &p) {
+			return
+		}
 		s.mu.Lock()
 		delete(s.docs, p.TextDocument.URI)
 		delete(s.sidecarAt, p.TextDocument.URI)
@@ -265,8 +292,7 @@ func (s *Server) handle(msg *rpcMessage) {
 	case "workspace/executeCommand":
 		s.reply(msg.ID, s.executeCommand(msg.Params))
 	default:
-		// Answering an unsupported request with null makes clients that expect
-		// a list report a decoding error; say "no such method" instead.
+		// A null answer makes clients expecting a list report a decode error.
 		if len(msg.ID) > 0 && string(msg.ID) != "null" {
 			s.send(rpcMessage{ID: msg.ID, Error: &rpcError{
 				Code:    -32601,
@@ -313,8 +339,7 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 	}
 	sc, err := mrsf.Load(uriToPath(uri))
 	if err != nil {
-		// Every comment is invisible while the file is unparseable, so say so
-		// in the editor instead of looking like a review with nothing in it.
+		// Otherwise a broken file looks like a review with nothing in it.
 		s.tracef("sidecar: %v", err)
 		li := newLineIndex(text)
 		return append([]Diagnostic{{
@@ -379,8 +404,8 @@ func (s *Server) publish(uri string) {
 	})
 }
 
-// watchSidecars republishes when a sidecar changes on disk, so comments an
-// agent adds from the CLI appear without touching the document.
+// Republishes when a sidecar changes on disk, so comments an agent adds from
+// the CLI appear without touching the document.
 func (s *Server) watchSidecars() {
 	defer close(s.stopped)
 	ticker := time.NewTicker(time.Second)
@@ -422,7 +447,10 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 		} `json:"textDocument"`
 		Range Range `json:"range"`
 	}
-	json.Unmarshal(params, &p)
+	if err := json.Unmarshal(params, &p); err != nil {
+		s.tracef("codeAction: %v", err)
+		return []CodeAction{}
+	}
 
 	uri := p.TextDocument.URI
 	s.mu.Lock()
@@ -466,8 +494,8 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 				},
 			})
 		}
-		// Naming the two cases apart: turning down a proposed edit is a
-		// different decision from closing a remark you have dealt with.
+		// Turning down a proposal is a different decision from closing a
+		// remark you have dealt with.
 		closeTitle := "Resolve comment: " + summary(c.Text)
 		if hasSuggestion {
 			closeTitle = "Keep the current wording: " + summary(c.SelectedText)
@@ -489,8 +517,8 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 	return actions
 }
 
-// overlaps reports whether two ranges touch. The editor asks for actions at
-// the cursor, which is an empty range, so touching at a boundary counts.
+// The editor asks for actions at the cursor, an empty range, so touching at a
+// boundary counts.
 func overlaps(a, b Range) bool {
 	return !before(a.End, b.Start) && !before(b.End, a.Start)
 }
@@ -499,11 +527,9 @@ func before(p, q Position) bool {
 	return p.Line < q.Line || (p.Line == q.Line && p.Character < q.Character)
 }
 
-// fileDraftAction turns a CriticMarkup draft into a filed comment: the edit
-// removes the marker from the document, the command records it in the sidecar.
+// The edit removes the marker; the command records the comment.
 func fileDraftAction(uri string, li *lineIndex, dr draft) CodeAction {
-	// Swallow one leading space so removing an inline marker does not leave a
-	// double space behind.
+	// Swallow one leading space, or an inline marker leaves a double space.
 	from := dr.Start
 	if from > 0 && li.text[from-1] == ' ' {
 		from--
@@ -524,7 +550,7 @@ func fileDraftAction(uri string, li *lineIndex, dr draft) CodeAction {
 	}
 }
 
-// summary is a one-line label for a menu entry.
+// summary labels a menu entry.
 func summary(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
@@ -540,7 +566,10 @@ func (s *Server) executeCommand(params json.RawMessage) any {
 		Command   string   `json:"command"`
 		Arguments []string `json:"arguments"`
 	}
-	json.Unmarshal(params, &p)
+	if err := json.Unmarshal(params, &p); err != nil {
+		s.tracef("executeCommand: %v", err)
+		return nil
+	}
 	switch {
 	case p.Command == "mdrev.file" && len(p.Arguments) >= 4:
 		return s.fileDraft(p.Arguments[0], p.Arguments[1], p.Arguments[2], p.Arguments[3])
@@ -566,9 +595,7 @@ func (s *Server) executeCommand(params json.RawMessage) any {
 	return nil
 }
 
-// fileDraft records a comment the human typed into the document. The author is
-// the human, not the agent, so it is left to the sidecar's default rather than
-// guessed here.
+// fileDraft records a comment typed into the document.
 func (s *Server) fileDraft(uri, anchor, text, line string) any {
 	n, _ := strconv.Atoi(line)
 	if err := mrsf.Update(uriToPath(uri), func(sc *mrsf.Sidecar) error {

@@ -11,9 +11,7 @@ import (
 	"github.com/esivres/mdrev/internal/mrsf"
 )
 
-// resolveComment closes a thread without replying to it, recording how it
-// ended. Applying a suggestion and turning it down otherwise leave identical
-// state, and an agent that cannot tell them apart proposes the same edit again.
+// resolveComment closes a thread without replying, recording how it ended.
 func resolveComment(args []string) error {
 	fs := flag.NewFlagSet("resolve", flag.ExitOnError)
 	file := fs.String("file", "", "path to the document")
@@ -60,9 +58,8 @@ func resolveComment(args []string) error {
 	return nil
 }
 
-// applySuggestion is the one place this tool writes to the document itself.
-// Without it an accepted suggestion can only be landed from inside an editor,
-// which leaves an agent unable to finish the work it proposed.
+// applySuggestion is the one place this tool writes to the document. Without
+// it an accepted suggestion could only be landed from inside an editor.
 func applySuggestion(args []string) error {
 	fs := flag.NewFlagSet("apply", flag.ExitOnError)
 	file := fs.String("file", "", "path to the document")
@@ -83,9 +80,8 @@ func applySuggestion(args []string) error {
 
 	var applied *mrsf.Comment
 	var at int
-	// The document and the review change together, so both happen under the
-	// same lock: a crash between them would leave a suggestion applied but
-	// still open, or closed but not applied.
+	// Both under one lock: a crash between them would leave a suggestion
+	// applied but still open, or closed but not applied.
 	if err := mrsf.Update(*file, func(sc *mrsf.Sidecar) error {
 		c, err := findByPrefix(sc, *id)
 		if err != nil {
@@ -107,8 +103,8 @@ func applySuggestion(args []string) error {
 		if !anchor.Found(lines, c.SelectedText) {
 			return fmt.Errorf("the text %q is no longer in %s", c.SelectedText, *file)
 		}
-		// Replace the occurrence nearest the comment: the fragment may well
-		// appear elsewhere, and rewriting the wrong one would be silent damage.
+		// The fragment may appear elsewhere; rewriting the wrong one is silent
+		// damage.
 		at = anchor.NearestLine(lines, c.SelectedText, c.Line-1)
 		lines[at] = strings.Replace(lines[at], c.SelectedText, suggested, 1)
 
@@ -126,8 +122,7 @@ func applySuggestion(args []string) error {
 	return nil
 }
 
-// writeFileAtomically replaces a file through a temporary one in the same
-// directory, keeping the mode it already had.
+// Replaces a file through a temporary one beside it, keeping its mode.
 func writeFileAtomically(path string, data []byte) error {
 	target := path
 	if resolved, err := filepath.EvalSymlinks(target); err == nil {
@@ -142,14 +137,14 @@ func writeFileAtomically(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {

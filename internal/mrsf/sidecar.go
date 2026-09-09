@@ -12,8 +12,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SuggestedTextKey holds a proposed replacement for the anchored text. MRSF has
-// no field for this, so it rides in the spec's x_* extension namespace.
+// SuggestedTextKey carries a proposed replacement. MRSF has no field for one,
+// so it rides in the spec's x_* extension namespace.
 const SuggestedTextKey = "x_suggested_text"
 
 type Comment struct {
@@ -43,21 +43,18 @@ type Sidecar struct {
 	Version  string    `yaml:"mrsf_version"`
 	Document string    `yaml:"document"`
 	Comments []Comment `yaml:"comments"`
-	// Extra keeps top-level keys other tools wrote. Without it every save
-	// through this package would quietly delete their metadata.
+	// Keys other tools wrote; without this, every save would delete them.
 	Extra map[string]any `yaml:",inline"`
 
 	path string
 }
 
-// Path returns the sidecar path for a document, matching the layout the mrsf
-// CLI creates: doc.md -> doc.md.review.yaml.
+// Path matches the layout the reference mrsf CLI creates.
 func Path(document string) string {
 	return document + ".review.yaml"
 }
 
-// Load returns a nil Sidecar (and no error) when the document has no sidecar,
-// so callers can treat "no review in progress" as the normal case.
+// Load returns nil, nil when there is no sidecar: no review is a normal state.
 func Load(document string) (*Sidecar, error) {
 	path := Path(document)
 	data, err := os.ReadFile(path)
@@ -75,9 +72,8 @@ func Load(document string) (*Sidecar, error) {
 	return &s, nil
 }
 
-// save writes the sidecar atomically. A review is the only copy of a
-// discussion, and a half-written file can still parse as valid YAML with
-// comments missing — which the next save would make permanent.
+// save replaces the sidecar whole: a half-written file still parses as YAML
+// with comments missing, and the next save would make that permanent.
 func (s *Sidecar) save() error {
 	s.dropShadowedKeys()
 
@@ -91,8 +87,7 @@ func (s *Sidecar) save() error {
 		return err
 	}
 
-	// Replacing by rename would turn a symlinked sidecar into a regular file
-	// and orphan whatever it pointed at, so write through the link.
+	// Rename would turn a symlinked sidecar into a regular file.
 	target := s.path
 	if resolved, err := filepath.EvalSymlinks(target); err == nil {
 		target = resolved
@@ -103,14 +98,14 @@ func (s *Sidecar) save() error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 
 	if _, err := tmp.WriteString(buf.String()); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -122,17 +117,16 @@ func (s *Sidecar) save() error {
 	if err := os.Rename(tmp.Name(), target); err != nil {
 		return err
 	}
-	// The rename itself is only durable once the directory entry is on disk.
+	// The rename is durable only once the directory entry is on disk.
 	if d, err := os.Open(dir); err == nil {
-		defer d.Close()
+		defer func() { _ = d.Close() }()
 		return d.Sync()
 	}
 	return nil
 }
 
-// dropShadowedKeys removes extras that collide with a modelled field. The yaml
-// encoder panics on such a key, and losing an unknown duplicate is a far better
-// outcome than losing the whole review to a panic on the write path.
+// The yaml encoder panics on an extra that shadows a modelled field; losing
+// the duplicate beats losing the review.
 func (s *Sidecar) dropShadowedKeys() {
 	delete(s.Extra, "mrsf_version")
 	delete(s.Extra, "document")
@@ -148,8 +142,7 @@ func (s *Sidecar) dropShadowedKeys() {
 	}
 }
 
-// perm keeps whatever mode the sidecar already had: replacing the file must not
-// widen access to a review someone deliberately kept private.
+// Replacing the file must not widen access to a private review.
 func (s *Sidecar) perm() os.FileMode {
 	if info, err := os.Stat(s.path); err == nil {
 		return info.Mode().Perm()
@@ -166,10 +159,8 @@ func (s *Sidecar) Find(id string) *Comment {
 	return nil
 }
 
-// Outcomes record how a thread ended. Applying a suggestion and turning it
-// down both close the thread, and without this they leave identical state — so
-// an agent cannot tell an accepted proposal from a rejected one, and proposes
-// the same change again.
+// How a thread ended. Applying a suggestion and turning it down both close it,
+// so without this an agent cannot tell the two apart and proposes again.
 const (
 	OutcomeKey       = "x_outcome"
 	OutcomeApplied   = "applied"

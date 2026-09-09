@@ -1,0 +1,37 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck      # an ignored error on a write path is how a review goes missing
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - revive
+    - bodyclose
+    - errorlint
+    - nilerr
+    - unconvert
+    - usestdlibvars
+    - wastedassign
+
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true   # internal packages, not a public API
+    staticcheck:
+      checks: ["all"]
+
+  exclusions:
+    rules:
+      # Rendering to stdout and the trace log cannot meaningfully fail, and
+      # checking every Fprintf would bury the errors that matter.
+      - path: (cmd/mdrev|internal/tui)
+        linters: [errcheck]
+        source: "fmt\\.(Print|Fprint)"
+
+formatters:
+  enable:
+    - gofmt

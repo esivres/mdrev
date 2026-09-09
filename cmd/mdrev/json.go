@@ -2,11 +2,9 @@ package main
 
 import "github.com/esivres/mdrev/internal/mrsf"
 
-// jsonComment is the machine-readable shape of a comment. It is declared here
-// rather than serialised from mrsf.Comment because that struct carries yaml
-// tags only, which would expose Go field names and hide the suggested text
-// inside a generic extras map — this is an interface agents depend on, so it
-// is written out explicitly and follows the field names of the MRSF file.
+// jsonComment is the machine-readable shape of a comment, written out rather
+// than serialised from mrsf.Comment: that struct carries yaml tags only, so it
+// would expose Go field names and bury the suggestion in a generic map.
 type jsonComment struct {
 	ID           string        `json:"id"`
 	Author       string        `json:"author,omitempty"`

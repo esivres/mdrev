@@ -6,11 +6,9 @@ type Thread struct {
 	Replies []Comment
 }
 
-// Threads groups a review into discussions. Replies nest arbitrarily deep in
-// the format, and a reply may point at a parent that is no longer there, so
-// every comment is walked up to its root: anything else drops a reply out of
-// every view while leaving it in the file, which is how a human's answer went
-// missing.
+// Threads groups a review into discussions. Replies nest arbitrarily deep and
+// may point at a parent that is gone, so each comment is walked up to its root
+// rather than matched against top-level comments — that dropped answers.
 func (s *Sidecar) Threads(includeResolved bool) []Thread {
 	byID := make(map[string]*Comment, len(s.Comments))
 	for i := range s.Comments {
@@ -44,10 +42,8 @@ func (s *Sidecar) Threads(includeResolved bool) []Thread {
 	return threads
 }
 
-// rootOf follows reply_to up to the comment that starts the thread. A reply
-// whose parent is missing is its own root rather than lost. A cycle has no
-// root at all, so each comment in it becomes its own — anything else drops the
-// whole cycle out of every view.
+// A reply whose parent is missing is its own root rather than lost, and so is
+// each comment in a reply_to cycle.
 func rootOf(byID map[string]*Comment, c Comment) Comment {
 	start := c
 	seen := map[string]bool{c.ID: true}

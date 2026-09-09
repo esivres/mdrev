@@ -21,14 +21,16 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
 
-  format:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-      - run: gofmt -l . | tee /dev/stderr | (! read)
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
 
   extension:
     runs-on: ubuntu-latest

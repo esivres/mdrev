@@ -6,10 +6,9 @@ import (
 	"github.com/esivres/mdrev/internal/anchor"
 )
 
-// Comments can be typed straight into the document using CriticMarkup's
-// comment syntax, {>>like this<<}. LSP has no way to prompt a human for text,
-// and Zed supports neither window/showDocument nor workspace/applyEdit, so the
-// document itself is the only input surface a language server can offer.
+// Comments are typed into the document as CriticMarkup, {>>like this<<}. LSP
+// cannot prompt for text, and Zed implements neither window/showDocument nor
+// workspace/applyEdit, so the document is the only input surface available.
 const (
 	draftOpen  = "{>>"
 	draftClose = "<<}"
@@ -32,8 +31,7 @@ func findDrafts(text string) []draft {
 		start := off + i
 		end, ok := draftEnd(text, start)
 		if !ok {
-			// An unterminated marker must not swallow the rest of the file: its
-			// code action deletes the range it covers.
+			// Its code action deletes whatever the marker covers.
 			off = start + len(draftOpen)
 			continue
 		}
@@ -51,10 +49,9 @@ func findDrafts(text string) []draft {
 	}
 }
 
-// draftEnd finds the marker's closing tag. A comment may span lines, but not a
-// blank line and not another marker: past either, the opener was a stray one
-// and pairing it with a distant closer would put unrelated prose inside the
-// comment — and delete it from the document when the comment is filed.
+// A comment may span lines but not a blank line or another marker: past
+// either, the opener was stray, and pairing it with a distant closer would
+// swallow prose that filing then deletes.
 func draftEnd(text string, start int) (int, bool) {
 	rest := text[start+len(draftOpen):]
 	closing := strings.Index(rest, draftClose)
@@ -68,9 +65,8 @@ func draftEnd(text string, start int) (int, bool) {
 	return start + len(draftOpen) + closing + len(draftClose), true
 }
 
-// hasBlankLine reports whether the text contains an empty line. It cannot be a
-// search for "\n\n": on a CRLF document that is "\r\n\r\n", and the guard
-// would quietly do nothing on every file written by a Windows editor.
+// Not a search for "\n\n": on a CRLF document that is "\r\n\r\n", and the
+// guard would silently do nothing on every file written on Windows.
 func hasBlankLine(text string) bool {
 	for _, line := range strings.Split(text, "\n") {
 		if strings.TrimRight(line, "\r") == "" {
@@ -80,9 +76,7 @@ func hasBlankLine(text string) bool {
 	return false
 }
 
-// anchorFor quotes the words just before the marker, which is where a reader
-// naturally puts a remark. Failing that — the marker opens a line — it quotes
-// the words just after it.
+// A remark goes after what it is about; failing that, before.
 func anchorFor(text string, start, end int) string {
 	if a := anchor.Before(text[lineStart(text, start):start]); a != "" {
 		return a

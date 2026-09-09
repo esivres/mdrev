@@ -9,8 +9,7 @@ import (
 	"strings"
 )
 
-// readText collects the comment body. Multi-line is the normal case for review
-// prose, so stdin is read to EOF rather than a single line.
+// Multi-line is the normal case for review prose, so stdin is read to EOF.
 func readText(quote string, line int, useEditor bool) (string, error) {
 	if useEditor {
 		return readFromEditor(quote, line)
@@ -32,8 +31,7 @@ func header(quote string, line int) string {
 	return fmt.Sprintf("Comment on line %d", line)
 }
 
-// readFromEditor mirrors how git collects a commit message: a scratch file
-// with a commented-out prompt, everything after '#' stripped.
+// As git collects a commit message: a scratch file, '#' lines stripped.
 func readFromEditor(quote string, line int) (string, error) {
 	editor := firstNonEmpty(os.Getenv("VISUAL"), os.Getenv("EDITOR"))
 	if editor == "" {
@@ -45,11 +43,11 @@ func readFromEditor(quote string, line int) (string, error) {
 		return "", err
 	}
 	path := f.Name()
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 	fmt.Fprintf(f, "\n\n# %s\n# Lines starting with # are dropped.\n# An empty text cancels the comment.\n", header(quote, line))
-	f.Close()
+	_ = f.Close()
 
-	// The editor command may carry flags, e.g. EDITOR="zed --wait".
+	// EDITOR may carry flags, e.g. "zed --wait".
 	parts := strings.Fields(editor)
 	if len(parts) == 0 {
 		return "", fmt.Errorf("$VISUAL and $EDITOR are empty")

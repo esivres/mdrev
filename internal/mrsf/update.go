@@ -6,20 +6,14 @@ import (
 	"time"
 )
 
-// lockTimeout bounds how long a writer waits. A keystroke in the editor or the
-// browser must not hang on a lock somebody else is holding; failing loudly
-// after a moment is better than a frozen UI.
+// Bounded so a keystroke never hangs on somebody else's lock.
 const lockTimeout = 2 * time.Second
 
-// Update applies fn to a document's review under an exclusive lock and writes
-// the result. Every write goes through here: load and save are not separately
-// callable, so the lock cannot be forgotten by the next thing that needs to
-// change a comment.
+// Update applies fn to a document's review under an exclusive lock. It is the
+// only way to write one, so the lock cannot be forgotten.
 //
-// The lock does not extend to tools that know nothing about it — the reference
-// mrsf CLI, or a hand edit — and advisory locks are unreliable on network and
-// file-syncing filesystems. It covers concurrent mdrev processes, which is what
-// an agent writing while a human resolves actually produces.
+// The lock is advisory: it binds mdrev processes, not other tools, and is
+// unreliable on network and file-syncing filesystems.
 func Update(document string, fn func(*Sidecar) error) error {
 	release, err := lockSidecar(document)
 	if err != nil {
@@ -37,36 +31,32 @@ func Update(document string, fn func(*Sidecar) error) error {
 	return sc.save()
 }
 
-// lockSidecar takes the lock on a file beside the sidecar rather than on the
-// sidecar itself: Save replaces that file by rename, so a lock held on its
-// inode would be orphaned the moment anyone wrote, and two writers would each
-// hold an exclusive lock on a different file. The lock file is never removed —
-// deleting it is the classic race where one process unlinks the file another
-// has just opened.
+// The lock lives beside the sidecar, not on it: save replaces the sidecar by
+// rename, which would orphan a lock held on its inode. The lock file is never
+// removed — unlinking it races with whoever has it open.
 func lockSidecar(document string) (func(), error) {
 	path := Path(document) + ".lock"
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
-		// A read-only directory should not stop a review being read, and there
-		// is nobody to contend with if nobody can write.
-		return func() {}, nil
+		// Nobody can write here, so nobody can contend.
+		return func() {}, nil //nolint:nilerr
 	}
 
 	deadline := time.Now().Add(lockTimeout)
 	for {
 		locked, err := tryLock(f)
 		if err != nil {
-			f.Close()
+			_ = f.Close()
 			return nil, fmt.Errorf("locking %s: %w", path, err)
 		}
 		if locked {
 			return func() {
-				unlock(f)
-				f.Close()
+				_ = unlock(f)
+				_ = f.Close()
 			}, nil
 		}
 		if time.Now().After(deadline) {
-			f.Close()
+			_ = f.Close()
 			return nil, fmt.Errorf("another mdrev is writing %s (waited %s)", Path(document), lockTimeout)
 		}
 		time.Sleep(5 * time.Millisecond)

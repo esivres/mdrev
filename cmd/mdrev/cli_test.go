@@ -22,6 +22,15 @@ func build(t *testing.T) string {
 	return bin
 }
 
+// mustRun fails the test where a setup command fails, instead of letting the
+// failure surface later as a confusing assertion.
+func mustRun(t *testing.T, bin, dir string, args ...string) {
+	t.Helper()
+	if out, err := run(t, bin, dir, args...); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+}
+
 func run(t *testing.T, bin, dir string, args ...string) (string, error) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
@@ -69,10 +78,10 @@ func TestReplyResolvesTheParent(t *testing.T) {
 // names, and needs the human's replies nested in the thread it answered.
 func TestListJSONUsesSidecarFieldNamesAndCarriesReplies(t *testing.T) {
 	bin, dir := fixture(t)
-	run(t, bin, dir, "comment", "--file", "doc.md", "--quote", "beta", "--line", "1",
+	mustRun(t, bin, dir, "comment", "--file", "doc.md", "--quote", "beta", "--line", "1",
 		"--type", "suggestion", "--suggest", "BETA", "--text", "shout it", "--author", "A")
 	id := firstID(t, bin, dir)
-	run(t, bin, dir, "reply", "--file", "doc.md", "--id", id[:8], "--text", "agreed", "--author", "B")
+	mustRun(t, bin, dir, "reply", "--file", "doc.md", "--id", id[:8], "--text", "agreed", "--author", "B")
 
 	out, err := run(t, bin, dir, "list", "doc.md", "--json")
 	if err != nil {
@@ -133,7 +142,7 @@ func TestMissingDocumentIsAnError(t *testing.T) {
 // after the file used to be accepted and ignored.
 func TestFlagsAfterThePathAreHonoured(t *testing.T) {
 	bin, dir := fixture(t)
-	run(t, bin, dir, "comment", "--file", "doc.md", "--quote", "beta", "--line", "1", "--text", "x")
+	mustRun(t, bin, dir, "comment", "--file", "doc.md", "--quote", "beta", "--line", "1", "--text", "x")
 
 	out, err := run(t, bin, dir, "list", "doc.md", "--json")
 	if err != nil {
@@ -170,7 +179,7 @@ func TestApplyRewritesTheAnchoredOccurrence(t *testing.T) {
 		"Latency must not exceed 200 ms.\n\nUnrelated prose about 200 ms.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	run(t, bin, dir, "comment", "--file", "doc.md", "--line", "1",
+	mustRun(t, bin, dir, "comment", "--file", "doc.md", "--line", "1",
 		"--quote", "200 ms", "--suggest", "500 ms", "--type", "suggestion", "--text", "too tight")
 	id := firstID(t, bin, dir)
 
@@ -193,7 +202,7 @@ func TestApplyRewritesTheAnchoredOccurrence(t *testing.T) {
 // difference has to be recorded.
 func TestOutcomeDistinguishesAppliedFromDismissed(t *testing.T) {
 	bin, dir := fixture(t)
-	run(t, bin, dir, "comment", "--file", "doc.md", "--line", "1",
+	mustRun(t, bin, dir, "comment", "--file", "doc.md", "--line", "1",
 		"--quote", "beta", "--suggest", "BETA", "--type", "suggestion", "--text", "shout")
 	id := firstID(t, bin, dir)
 	if out, err := run(t, bin, dir, "resolve", "--file", "doc.md", "--id", id[:8], "--dismiss"); err != nil {
@@ -225,7 +234,7 @@ func TestOutcomeDistinguishesAppliedFromDismissed(t *testing.T) {
 // file.
 func TestNestedReplyIsVisible(t *testing.T) {
 	bin, dir := fixture(t)
-	run(t, bin, dir, "comment", "--file", "doc.md", "--line", "1", "--quote", "beta", "--text", "why?")
+	mustRun(t, bin, dir, "comment", "--file", "doc.md", "--line", "1", "--quote", "beta", "--text", "why?")
 	parent := firstID(t, bin, dir)
 	if out, err := run(t, bin, dir, "reply", "--file", "doc.md", "--id", parent[:8], "--text", "first answer"); err != nil {
 		t.Fatalf("%v: %s", err, out)

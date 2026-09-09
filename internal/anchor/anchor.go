@@ -1,6 +1,5 @@
-// Package anchor quotes a fragment of a document to attach a comment to.
-// The quote has to be long enough to be unique and short enough to survive
-// later edits, and it must read well when the comment is listed.
+// Package anchor quotes a fragment of a document to attach a comment to: long
+// enough to be unique, short enough to survive later edits.
 package anchor
 
 import (
@@ -8,11 +7,11 @@ import (
 	"unicode"
 )
 
-// Words is how much text is quoted. Six words is about a clause.
+// Words is how much text is quoted — about a clause.
 const Words = 6
 
-// Before quotes the end of a text, which is where a remark written after a
-// fragment belongs.
+// Before quotes the end of a text, where a remark written after a fragment
+// belongs.
 func Before(s string) string {
 	fields := strings.Fields(s)
 	if len(fields) > Words {
@@ -21,8 +20,8 @@ func Before(s string) string {
 	return trim(strings.Join(fields, " "))
 }
 
-// After quotes the beginning of the first non-empty line, used when there is
-// nothing in front of the comment to anchor on.
+// After quotes the first non-empty line, for a comment with nothing in front
+// of it.
 func After(s string) string {
 	for _, line := range strings.Split(s, "\n") {
 		fields := strings.Fields(line)
@@ -43,10 +42,9 @@ func trim(s string) string {
 	})
 }
 
-// NearestLine returns the 0-based line of the occurrence of needle closest to
-// a line already known, or that line when the needle is absent. A fragment can
-// repeat in a document — in prose and again inside a diagram — so "somewhere in
-// the text" is never a good enough answer.
+// NearestLine returns the 0-based line of the occurrence closest to a line
+// already known, or that line if the needle is absent. A fragment can repeat —
+// in prose and again inside a diagram — so any occurrence is not good enough.
 func NearestLine(lines []string, needle string, near int) int {
 	if needle == "" {
 		return near

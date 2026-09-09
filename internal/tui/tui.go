@@ -1,5 +1,5 @@
-// Package tui presents review threads for one document: the whole discussion
-// at once, which an editor's inline diagnostics cannot show.
+// Package tui shows a document's review threads in full — an editor's inline
+// diagnostic is one line, which a discussion does not fit into.
 package tui
 
 import (
@@ -65,9 +65,8 @@ var (
 			BorderForeground(lipgloss.Color("8")).PaddingRight(2).MarginRight(2)
 )
 
-// Run opens the browser for a document's review threads. A non-zero line is
-// where the reader was in the document, so the thread about that spot opens
-// first rather than whichever happens to be at the top.
+// Run opens the thread browser. A non-zero line is where the reader was, so
+// the thread about that spot opens first.
 func Run(document string, line int) error {
 	m := model{document: document, line: line, editor: newEditor()}
 	if err := m.reload(); err != nil {
@@ -93,8 +92,7 @@ func newEditor() textarea.Model {
 }
 
 func (m *model) reload() error {
-	// The cursor is an index, but the reader is looking at a thread: without
-	// this, resolving one silently moves the selection onto its neighbour.
+	// The cursor is an index but the reader is looking at a thread.
 	var selected string
 	if m.cursor < len(m.threads) {
 		selected = m.threads[m.cursor].parent.ID
@@ -132,9 +130,7 @@ func (m *model) reload() error {
 	return nil
 }
 
-// currentLine locates a comment's anchor in the document as it is now. The
-// recorded line drifts the moment text is inserted above it, and selecting a
-// thread by a stale line lands the reader on the wrong discussion.
+// The recorded line drifts as soon as text is inserted above it.
 func (m model) currentLine(c mrsf.Comment) int {
 	if m.docText == "" {
 		return c.Line
@@ -160,8 +156,7 @@ func (m model) nearestThread() int {
 	return best
 }
 
-// lineQuote reads the document to anchor a new comment on the line the reader
-// came from.
+// Anchors a new comment on the line the reader came from.
 func (m model) lineQuote() string {
 	if m.line == 0 {
 		return ""
@@ -177,9 +172,8 @@ func (m model) lineQuote() string {
 	return anchor.After(lines[m.line-1])
 }
 
-// paragraphAt returns the block of text a comment is about. A reader needs the
-// surrounding sentence to judge a remark; the quoted fragment alone is not
-// enough, and switching to the document to find it defeats the browser.
+// A remark cannot be judged without the sentence around it, and switching to
+// the document to find it defeats the browser.
 func paragraphAt(text string, line int, quote string) string {
 	lines := strings.Split(text, "\n")
 	idx := anchor.NearestLine(lines, quote, line-1)
@@ -217,14 +211,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// layout guards against degenerate terminal sizes: a viewport built with a
-// negative height renders nothing at all, silently.
+// A viewport built with a negative height renders nothing, silently.
 func (m *model) layout() {
 	listWidth := min(42, max(20, m.width/3))
 	bodyWidth := max(20, m.width-listWidth-4)
 	m.body = viewport.New(bodyWidth, max(3, m.height-5))
-	// j/k and the arrows move between threads, so the viewport keeps only the
-	// paging keys and scrolls the thread itself.
+	// j/k and the arrows move between threads.
 	km := viewport.DefaultKeyMap()
 	km.Up = key.NewBinding()
 	km.Down = key.NewBinding()
@@ -293,8 +285,7 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// updateComposing handles both writing a new comment and replying: the keys
-// are the same, only the destination differs.
+// Writing a new comment and replying share their keys.
 func (m model) updateComposing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
@@ -343,9 +334,7 @@ func (m model) updateComposing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *model) saveReply(text string) error {
 	parent := m.threads[m.cursor].parent
 	return mrsf.Update(m.document, func(sc *mrsf.Sidecar) error {
-		// The sidecar may have been rewritten since it was loaded, so make sure
-		// the parent is still there rather than writing a reply nothing can
-		// display.
+		// The sidecar may have been rewritten since it was loaded.
 		if sc.Find(parent.ID) == nil {
 			return fmt.Errorf("that thread is no longer in the review")
 		}
@@ -410,8 +399,7 @@ func (m *model) toggleResolved() tea.Cmd {
 	return nil
 }
 
-// openInEditor hands the document to $EDITOR at the thread's line, so a reader
-// can jump from the discussion to the text it is about.
+// Jumps from the discussion to the text it is about.
 func (m *model) openInEditor() tea.Cmd {
 	editor := os.Getenv("VISUAL")
 	if editor == "" {
@@ -472,8 +460,7 @@ func (m model) resolvedHelp() string {
 	return "a show resolved"
 }
 
-// scrollHint tells the reader that a thread continues past the pane, which is
-// otherwise invisible and makes long discussions look truncated.
+// A thread continuing past the pane is otherwise invisible.
 func (m model) scrollHint() string {
 	if m.mode != browsing || m.body.AtBottom() && m.body.AtTop() {
 		return ""
