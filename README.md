@@ -1,75 +1,77 @@
 # mdrev
 
-Режим рецензирования для markdown-документов: инлайн-комментарии к фрагменту
-текста, вопросы и ответы, предложенные правки с принятием и отклонением.
+Review mode for markdown documents: inline comments on a fragment of text,
+questions and answers, suggested edits you can apply or dismiss.
 
-Комментарии живут в отдельном файле рядом с документом
-([MRSF](https://sidemark.org)), поэтому сам `.md` не меняется — диаграммы,
-таблицы и история в git остаются чистыми.
+Comments live in a separate file next to the document
+([MRSF](https://sidemark.org)), so the `.md` itself never changes — diagrams,
+tables and the git history stay clean.
 
 ```
-doc.md              документ, к нему никто не притрагивается
-doc.md.review.yaml  комментарии, треды, предложенные правки
+doc.md              the document, never touched
+doc.md.review.yaml  comments, threads, suggested edits
 ```
 
-Работает в двух режимах одновременно: как language server — комментарии видны
-прямо в редакторе; как CLI с `--json` — через него документ рецензирует агент.
+It runs as two front ends over the same store: a language server, so comments
+show up right in the editor, and a CLI with `--json`, so an agent can review
+the document too.
 
-## Установка
+## Install
 
 ```sh
-brew install esivres/tap/mdrev          # macOS и Linux
+brew install esivres/tap/mdrev          # macOS and Linux
 scoop bucket add esivres https://github.com/esivres/scoop-bucket
 scoop install mdrev                     # Windows
 go install github.com/esivres/mdrev/cmd/mdrev@latest
 ```
 
-## Быстрый старт
+## Getting started
 
 ```sh
 cd ~/documents/spec
-mdrev init                              # настроит редактор
+mdrev init                              # sets up the editor
 ```
 
-Дальше — в редакторе: выделяешь текст, `Alt+C`, пишешь комментарий. Он
-подчёркивается прямо в документе; наведение показывает текст, `Alt+Enter` даёт
-«принять правку» и «пометить решённым».
+`init` asks which shortcut to bind, or takes one with `--keys ctrl-alt-k`.
+After that, in the editor: select text, press the shortcut, type a comment. It
+gets underlined in the document; hovering shows the text, and the code action
+menu offers "Apply suggestion" and "Dismiss / mark resolved".
 
-Из терминала то же самое:
+The same from a terminal:
 
 ```sh
-mdrev comment --file spec.md --quote "не превышает 2" --type issue
+mdrev comment --file spec.md --quote "no more than 2" --type issue
 mdrev list spec.md
 mdrev reply --file spec.md --id 9b9e4214
 ```
 
-## Как это работает в Zed
+## How it works in Zed
 
-Zed не позволяет объявить свой language server в настройках — сервер
-регистрируется только расширением. `mdrev init` использует обходной путь:
-подменяет бинарник расширения Marksman, которое объявляет себя сервером для
-Markdown. Установи Marksman из панели расширений, остальное сделает `init`.
+Zed cannot register a language server from settings — only an extension can
+declare one. `mdrev init` works around this by taking over the Marksman
+extension, which declares itself the server for Markdown, and overriding its
+binary. Install Marksman from the extensions panel; `init` does the rest.
 
-Ввод комментариев идёт не через LSP — в протоколе нет способа спросить у
-человека текст. `init` заводит задачи Zed с переменной `ZED_SELECTED_TEXT`
-и вешает их на `Alt+C` и `Alt+Shift+C`.
+Comment input does not go through LSP: the protocol has no way to ask a human
+for text. `init` writes Zed tasks that use `ZED_SELECTED_TEXT` and binds them
+to your shortcut.
 
-## Совместимость
+## Compatibility
 
-mdrev пишет валидный MRSF: то, что он создаёт, принимает эталонный валидатор
-`mrsf validate`. Предложенные правки хранятся в `x_suggested_text` — в
-пространстве расширений, предусмотренном спецификацией.
+mdrev writes valid MRSF: what it produces is accepted by the reference
+validator, `mrsf validate`. Suggested edits are stored in `x_suggested_text`,
+inside the extension namespace the specification reserves.
 
-Почему взят чужой формат, но не чужие инструменты, описано в
+Why the format was adopted but not its tooling is written up in
 [ADR-0001](docs/adr-0001-storage-and-tooling.md).
 
-## Ограничения
+## Limitations
 
-- Ответы в тред и резолв чужих комментариев — из CLI; в редакторе есть только
-  резолв через code action.
-- Многострочный комментарий вводится до `Ctrl+D` либо флагом `--editor`.
-- Просмотр документа в браузере — второй этап.
+- Replies and resolving someone else's comment are CLI-only; the editor offers
+  resolve through a code action.
+- A multi-line comment is typed until `Ctrl+D`, or composed with `--editor`.
+- Reading the document in a browser is a second stage.
 
-## Лицензия
+## License
 
 MIT

@@ -13,18 +13,19 @@ import (
 	"github.com/esivres/mdrev/internal/mrsf"
 )
 
-const usage = `mdrev — рецензирование markdown: комментарии, вопросы, предложенные правки.
-Комментарии живут в сайдкаре рядом с документом, сам документ не меняется.
+const usage = `mdrev — review markdown: comments, questions and suggested edits.
+Comments live in a sidecar next to the document; the document is never modified.
 
-  mdrev init [--keymap]     настроить проект: LSP и задачи редактора
-  mdrev comment [флаги]     добавить комментарий; текст со stdin или --editor
-  mdrev list <файл.md>      открытые комментарии; --json для агента
-  mdrev lsp                 language server, запускается редактором
+  mdrev init [flags]        set up the project: language server and editor tasks
+  mdrev comment [flags]     add a comment; text from stdin or --editor
+  mdrev reply [flags]       reply in a thread
+  mdrev list <file.md>      open comments; --json for an agent
+  mdrev lsp                 language server, started by the editor
 
-  mdrev comment -h          флаги комментария
+  mdrev <command> -h        flags of a command
 
-Якорь задаётся --quote «фрагмент» и --line N: комментарий следует за текстом,
-когда документ правят, и помечается потерянным, если фрагмент исчез.
+An anchor is --quote "fragment" plus --line N: the comment follows the text as
+the document is edited, and is flagged as orphaned once the fragment is gone.
 `
 
 var version = "dev"
@@ -38,12 +39,14 @@ func main() {
 	switch os.Args[1] {
 	case "--version", "-v", "version":
 		fmt.Println("mdrev", version)
+	case "-h", "--help", "help":
+		fmt.Print(usage)
 	case "lsp":
 		err = lsp.NewServer(os.Stdout).Run(os.Stdin)
-	case "reply":
-		err = replyToComment(os.Args[2:])
 	case "init":
 		err = initProject(os.Args[2:])
+	case "reply":
+		err = replyToComment(os.Args[2:])
 	case "list":
 		if len(os.Args) < 3 {
 			fmt.Fprint(os.Stderr, usage)
@@ -72,6 +75,7 @@ func printComments(args []string) error {
 	if err != nil {
 		return err
 	}
+
 	open := []mrsf.Comment{}
 	replies := map[string][]mrsf.Comment{}
 	if sc != nil {
@@ -84,39 +88,48 @@ func printComments(args []string) error {
 			}
 		}
 	}
+
 	if *asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(open)
 	}
 	for _, c := range open {
-		fmt.Printf("%s  %s:%d", c.ID[:8], filepath.Base(args[0]), c.Line)
+		fmt.Printf("%s  %s:%d", shortID(c.ID), filepath.Base(args[0]), c.Line)
 		if c.Type != "" {
 			fmt.Printf("  [%s]", c.Type)
 		}
 		fmt.Println()
 		if c.SelectedText != "" {
-			fmt.Printf("    «%s»\n", c.SelectedText)
+			fmt.Printf("    %q\n", c.SelectedText)
 		}
-		fmt.Printf("    %s:\n", c.Author)
-		for _, line := range strings.Split(c.Text, "\n") {
-			fmt.Printf("      %s\n", line)
-		}
+		printBody(c, "    ", "      ")
 		if s, ok := c.SuggestedText(); ok {
-			fmt.Printf("    → %s\n", s)
+			fmt.Printf("    -> %s\n", s)
 		}
 		for _, r := range replies[c.ID] {
-			fmt.Printf("    └ %s:\n", r.Author)
-			for _, line := range strings.Split(r.Text, "\n") {
-				fmt.Printf("        %s\n", line)
-			}
+			printBody(r, "    | ", "        ")
 		}
 		fmt.Println()
 	}
 	if len(open) == 0 {
-		fmt.Println("Открытых комментариев нет.")
+		fmt.Println("No open comments.")
 	}
 	return nil
+}
+
+func printBody(c mrsf.Comment, authorPrefix, textPrefix string) {
+	fmt.Printf("%s%s:\n", authorPrefix, c.Author)
+	for _, line := range strings.Split(c.Text, "\n") {
+		fmt.Printf("%s%s\n", textPrefix, line)
+	}
+}
+
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
 }
 
 func addComment(args []string) error {
@@ -174,7 +187,7 @@ func addComment(args []string) error {
 	if err := sidecar.Save(); err != nil {
 		return err
 	}
-	fmt.Printf("Добавлен комментарий %s → %s\n", added.ID, mrsf.Path(*file))
+	fmt.Printf("Added comment %s to %s\n", shortID(added.ID), mrsf.Path(*file))
 	return nil
 }
 

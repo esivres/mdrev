@@ -85,7 +85,7 @@ func TestOrphanedCommentStaysVisible(t *testing.T) {
 	if len(diags) != 1 {
 		t.Fatalf("want the comment kept, got %d", len(diags))
 	}
-	if !strings.Contains(diags[0].Message, "якорь потерян") {
+	if !strings.Contains(diags[0].Message, "anchor lost") {
 		t.Errorf("orphaned anchor must be flagged, got %q", diags[0].Message)
 	}
 }

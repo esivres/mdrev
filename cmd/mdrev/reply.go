@@ -65,7 +65,7 @@ func replyToComment(args []string) error {
 	if err := sidecar.Save(); err != nil {
 		return err
 	}
-	fmt.Printf("Ответ %s на %s\n", reply.ID[:8], parent.ID[:8])
+	fmt.Printf("Replied %s to %s\n", shortID(reply.ID), shortID(parent.ID))
 	return nil
 }
 

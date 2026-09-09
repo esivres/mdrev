@@ -1,37 +1,46 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"golang.org/x/term"
 )
 
-const marksmanNote = `Zed не даёт зарегистрировать свой language server через настройки:
-сервер объявляется только расширением. Поэтому mdrev подменяет собой
-расширение marksman — оно объявляет себя сервером для Markdown, а мы
-переопределяем его бинарник. Установи Marksman из панели расширений Zed.`
+const marksmanNote = `Zed cannot register a language server from settings: only an extension can
+declare one. mdrev works around this by taking over the Marksman extension,
+which declares itself the server for Markdown, and overriding its binary.
+Install Marksman from the Zed extensions panel.`
+
+const commentTask = "Comment on selection"
+const questionTask = "Question about selection"
+
+// keyPresets are offered when init runs interactively. Anything else can be
+// typed in, or passed with --keys.
+var keyPresets = []string{"alt-c", "ctrl-alt-c", "ctrl-shift-m"}
 
 func initProject(args []string) error {
-	writeKeymap := false
-	for _, a := range args {
-		if a == "--keymap" {
-			writeKeymap = true
-		}
+	fs := flag.NewFlagSet("init", flag.ExitOnError)
+	keys := fs.String("keys", "", "shortcut for the comment task, e.g. alt-c; a second one may follow after a comma")
+	writeKeymap := fs.Bool("write-keymap", false, "write the shortcuts into Zed's global keymap")
+	noKeymap := fs.Bool("no-keymap", false, "skip shortcuts entirely")
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
 
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	exe, err = filepath.EvalSymlinks(exe)
-	if err != nil {
-		return err
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
 	}
 
-	if err := os.MkdirAll(".zed", 0o755); err != nil {
-		return err
-	}
 	if err := writeIfAbsent(filepath.Join(".zed", "settings.json"), zedSettings(exe)); err != nil {
 		return err
 	}
@@ -40,19 +49,96 @@ func initProject(args []string) error {
 	}
 
 	if !marksmanInstalled() {
-		fmt.Println("\n! Расширение Marksman не найдено.")
+		fmt.Println("\n! Marksman extension not found.")
 		fmt.Println(marksmanNote)
 	}
 
-	keymapPath := filepath.Join(os.Getenv("HOME"), ".config", "zed", "keymap.json")
-	if writeKeymap {
-		if err := writeIfAbsent(keymapPath, zedKeymap()); err != nil {
-			return err
-		}
-	} else if _, err := os.Stat(keymapPath); err != nil {
-		fmt.Println("\nХоткеи в Zed задаются только глобально. Добавь в " + keymapPath + ":")
-		fmt.Println(zedKeymap())
+	if *noKeymap {
+		return nil
 	}
+	comment, question, err := chooseKeys(*keys)
+	if err != nil {
+		return err
+	}
+	if comment == "" {
+		return nil
+	}
+	return applyKeymap(comment, question, *writeKeymap)
+}
+
+// chooseKeys resolves the shortcuts from --keys, or asks when stdin is a
+// terminal. Returning an empty comment key means "no shortcuts".
+func chooseKeys(flagValue string) (comment, question string, err error) {
+	if flagValue != "" {
+		return splitKeys(flagValue)
+	}
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return splitKeys(keyPresets[0])
+	}
+
+	fmt.Println("\nShortcut for commenting on a selection:")
+	for i, k := range keyPresets {
+		suffix := ""
+		if i == 0 {
+			suffix = "  (default)"
+		}
+		fmt.Printf("  %d) %s%s\n", i+1, k, suffix)
+	}
+	fmt.Printf("  %d) enter your own\n", len(keyPresets)+1)
+	fmt.Printf("  %d) no shortcuts\n", len(keyPresets)+2)
+	fmt.Print("> ")
+
+	in := bufio.NewScanner(os.Stdin)
+	if !in.Scan() {
+		return splitKeys(keyPresets[0])
+	}
+	switch choice := strings.TrimSpace(in.Text()); choice {
+	case "":
+		return splitKeys(keyPresets[0])
+	case "1", "2", "3":
+		return splitKeys(keyPresets[int(choice[0]-'1')])
+	case "4":
+		fmt.Print("Shortcut (Zed syntax, e.g. ctrl-alt-k): ")
+		if !in.Scan() {
+			return "", "", fmt.Errorf("no shortcut given")
+		}
+		return splitKeys(strings.TrimSpace(in.Text()))
+	case "5":
+		return "", "", nil
+	default:
+		return "", "", fmt.Errorf("unknown choice %q", choice)
+	}
+}
+
+// splitKeys accepts "alt-c" or "alt-c,alt-shift-c". With one key given, the
+// question shortcut is its shift variant.
+func splitKeys(value string) (comment, question string, err error) {
+	parts := strings.Split(value, ",")
+	comment = strings.TrimSpace(parts[0])
+	if comment == "" {
+		return "", "", fmt.Errorf("empty shortcut")
+	}
+	if len(parts) > 1 {
+		return comment, strings.TrimSpace(parts[1]), nil
+	}
+	return comment, shiftVariant(comment), nil
+}
+
+func shiftVariant(key string) string {
+	if strings.Contains(key, "shift-") {
+		return ""
+	}
+	i := strings.LastIndex(key, "-")
+	return key[:i+1] + "shift-" + key[i+1:]
+}
+
+func applyKeymap(comment, question string, write bool) error {
+	path := filepath.Join(os.Getenv("HOME"), ".config", "zed", "keymap.json")
+	content := zedKeymap(comment, question)
+	if write {
+		return writeIfAbsent(path, content)
+	}
+	fmt.Printf("\nZed keymaps are global. Add to %s:\n%s\n", path, content)
 	return nil
 }
 
@@ -60,7 +146,7 @@ func initProject(args []string) error {
 // settings, and merging JSON blind is worse than printing what to paste.
 func writeIfAbsent(path, content string) error {
 	if _, err := os.Stat(path); err == nil {
-		fmt.Printf("\n%s уже существует, не трогаю. Нужный фрагмент:\n%s\n", path, content)
+		fmt.Printf("\n%s exists, leaving it alone. Add this:\n%s\n", path, content)
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -69,7 +155,7 @@ func writeIfAbsent(path, content string) error {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return err
 	}
-	fmt.Println("создан", path)
+	fmt.Println("created", path)
 	return nil
 }
 
@@ -114,18 +200,21 @@ func zedTasks(exe string) string {
 		}
 	}
 	return mustJSON([]any{
-		task("Комментарий к выделенному"),
-		task("Вопрос к выделенному", "--type", "question"),
+		task(commentTask),
+		task(questionTask, "--type", "question"),
 	})
 }
 
-func zedKeymap() string {
+func zedKeymap(comment, question string) string {
+	bindings := map[string]any{
+		comment: []any{"task::Spawn", map[string]any{"task_name": commentTask}},
+	}
+	if question != "" {
+		bindings[question] = []any{"task::Spawn", map[string]any{"task_name": questionTask}}
+	}
 	return mustJSON([]any{map[string]any{
-		"context": "Editor",
-		"bindings": map[string]any{
-			"alt-c":       []any{"task::Spawn", map[string]any{"task_name": "Комментарий к выделенному"}},
-			"alt-shift-c": []any{"task::Spawn", map[string]any{"task_name": "Вопрос к выделенному"}},
-		},
+		"context":  "Editor",
+		"bindings": bindings,
 	}})
 }
 

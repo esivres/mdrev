@@ -312,7 +312,7 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 			msg += "\n\n" + r.Author + ": " + r.Text
 		}
 		if !anchored {
-			msg = "[якорь потерян] " + msg
+			msg = "[anchor lost] " + msg
 		}
 		out = append(out, Diagnostic{
 			Range:    rng,
@@ -392,7 +392,7 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 		if suggested, ok := c.SuggestedText(); ok {
 			if rng, anchored := locate(li, *c); anchored {
 				actions = append(actions, CodeAction{
-					Title:       "Принять правку: " + firstLine(suggested),
+					Title:       "Apply suggestion: " + firstLine(suggested),
 					Kind:        "quickfix",
 					Diagnostics: []Diagnostic{d},
 					Edit: &WorkspaceEdit{Changes: map[string][]TextEdit{
@@ -407,7 +407,7 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 			}
 		}
 		actions = append(actions, CodeAction{
-			Title:       "Отклонить / пометить решённым",
+			Title:       "Dismiss / mark resolved",
 			Kind:        "quickfix",
 			Diagnostics: []Diagnostic{d},
 			Command: &Command{

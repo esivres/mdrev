@@ -16,7 +16,7 @@ func readText(quote string, line int, useEditor bool) (string, error) {
 		return readFromEditor(quote, line)
 	}
 	fmt.Println(header(quote, line))
-	fmt.Println("Введите текст. Завершить — Ctrl+D на пустой строке.")
+	fmt.Println("Type the text. Finish with Ctrl+D.")
 	fmt.Print("> ")
 	body, err := io.ReadAll(os.Stdin)
 	if err != nil {
@@ -27,9 +27,9 @@ func readText(quote string, line int, useEditor bool) (string, error) {
 
 func header(quote string, line int) string {
 	if quote != "" {
-		return fmt.Sprintf("Комментарий к «%s»", quote)
+		return fmt.Sprintf("Comment on %q", quote)
 	}
-	return fmt.Sprintf("Комментарий к строке %d", line)
+	return fmt.Sprintf("Comment on line %d", line)
 }
 
 // readFromEditor mirrors how git collects a commit message: a scratch file
@@ -46,7 +46,7 @@ func readFromEditor(quote string, line int) (string, error) {
 	}
 	path := f.Name()
 	defer os.Remove(path)
-	fmt.Fprintf(f, "\n\n# %s\n# Строки, начинающиеся с #, будут отброшены.\n# Пустой текст отменяет комментарий.\n", header(quote, line))
+	fmt.Fprintf(f, "\n\n# %s\n# Lines starting with # are dropped.\n# An empty text cancels the comment.\n", header(quote, line))
 	f.Close()
 
 	// The editor command may carry flags, e.g. EDITOR="zed --wait".

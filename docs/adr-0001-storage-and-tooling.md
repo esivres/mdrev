@@ -1,112 +1,117 @@
-# ADR-0001. Формат хранения рецензий и отношение к существующим инструментам
+# ADR-0001. Review storage format, and what we did with existing tools
 
-Дата: 2026-09-09
-Статус: принято
+Date: 2026-09-09
+Status: accepted
 
-## Контекст
+## Context
 
-Документы в markdown обсуждаются так же часто, как код, но рецензировать их
-нечем. Нужен режим рецензирования как в офисных пакетах: инлайн-комментарии к
-фрагменту, вопросы-ответы, предложенные правки с принятием и отклонением,
-и отслеживание изменений — причём доступный и человеку в редакторе, и агенту
-через CLI.
+Markdown documents get discussed as often as code, but there is nothing to
+review them with. We wanted the review mode of an office suite: inline comments
+on a fragment, questions and answers, suggested edits with accept and reject,
+and change tracking — reachable both by a human in an editor and by an agent
+through a CLI.
 
-Дополнительные условия, из которых мы исходили:
+The conditions we worked under:
 
-- Документы лежат локально, часто вне проекта и вне git.
-- Диаграммы (mermaid) и таблицы обязаны переживать рецензирование без потерь.
-- Основной редактор — Zed.
-- Публикация документа во внешний сервис исключена.
+- Documents live locally, often outside a project and outside git.
+- Diagrams (mermaid) and tables must survive review untouched.
+- The editor is Zed.
+- Publishing the document to an external service is out of the question.
 
-Мы рассмотрели четыре готовых подхода и два взяли всерьёз.
+We looked at four existing approaches and took two of them seriously.
 
-## Что отвергли сразу
+## Rejected outright
 
-**Merge/pull request.** Инлайн-комментарии к строкам диффа существуют и
-работают, но рецензируется дифф, а не документ, и обсуждение текста засоряет
-историю репозитория.
+**Merge/pull requests.** Inline comments on diff lines exist and work, but you
+review a diff rather than a document, and prose discussion pollutes the
+repository history.
 
-**Round-trip через pandoc в .docx.** Настоящий режим правки в Word, но
-преобразование теряет mermaid-диаграммы, а обратная конвертация корёжит
-разметку.
+**Round-trip through pandoc to .docx.** Real track changes in Word, but the
+conversion loses mermaid diagrams and mangles the markup on the way back.
 
 ## Sidemark / MRSF
 
-[Markdown Review Sidecar Format](https://sidemark.org) хранит комментарии в
-отдельном файле рядом с документом: `doc.md` + `doc.md.review.yaml`.
+[Markdown Review Sidecar Format](https://sidemark.org) keeps comments in a
+separate file beside the document: `doc.md` plus `doc.md.review.yaml`.
 
-Проверено на живом документе:
+Verified on a live document:
 
-- Документ не меняется вообще, диаграммы и таблицы в безопасности.
-- Реанкоринг работает: после вставки шести строк в начало документа
-  `mrsf reanchor` нашёл комментарии по тексту и восстановил не только строки,
-  но и колонки.
-- Формат — читаемый YAML со схемой, поля `x_*` зарезервированы под расширения.
-- Есть CLI, MCP-сервер и валидатор.
+- The document is not modified at all; diagrams and tables are safe.
+- Re-anchoring works: after six lines were inserted at the top of a document,
+  `mrsf reanchor` found the comments by their text and restored not just the
+  lines but the columns.
+- The format is readable YAML with a schema, and `x_*` keys are reserved for
+  extensions.
+- It ships a CLI, an MCP server and a validator.
 
-**Решение: формат берём, инструменты — нет.**
+**Decision: adopt the format, not the tooling.**
 
-Что нас не устроило в инструментах. Комментировать можно только внутри VS Code,
-Monaco или Milkdown — под Zed нет ничего, standalone-вьюера тоже нет. Правок с
-принятием и отклонением формат не описывает. И для интеграции с редактором
-нужен не CLI, а long-running language server, которого в поставке нет.
+What the tooling could not give us. Commenting is only possible inside VS Code,
+Monaco or Milkdown — nothing for Zed, and no standalone viewer. The format does
+not describe suggested edits with accept and reject. And editor integration
+needs a long-running language server, which is not part of the distribution.
 
-При этом сам формат несёт всю неочевидную сложность задачи — устойчивые якоря и
-их деградацию, — и переизобретать его было бы глупо. Мы пишем и читаем MRSF,
-а совместимость проверяем чужим валидатором: `mrsf validate` принимает то, что
-пишет mdrev. Предложенная правка хранится в `x_suggested_text`, то есть в
-предусмотренном спецификацией пространстве расширений, и чужие инструменты от
-неё не ломаются.
+The format, however, carries the one genuinely hard part of this problem —
+durable anchors and how they degrade — so reinventing it would have been
+foolish. We read and write MRSF, and we check compatibility with someone
+else's validator: `mrsf validate` accepts what mdrev produces. A suggested edit
+is stored in `x_suggested_text`, that is, in the extension namespace the
+specification sets aside, so other tools do not choke on it.
 
 ## md-redline
 
-[md-redline](https://github.com/dejuknow/md-redline) — браузерный вьюер:
-выделил текст мышью, оставил комментарий; MCP-сервер отдаёт комментарии агенту.
-Ближе всех к цели по UX, и рассматривался как база для форка.
+[md-redline](https://github.com/dejuknow/md-redline) is a browser viewer:
+select text with the mouse, leave a comment; an MCP server hands the comments
+to an agent. It is the closest to our goal in terms of UX, and we considered
+forking it.
 
-**Решение: не берём ни как есть, ни форком.**
+**Decision: neither adopt nor fork.**
 
-Хранение. Комментарий пишется невидимым HTML-маркером внутрь самого `.md`:
+Storage. A comment is written as an invisible HTML marker inside the `.md`
+itself:
 
 ```
-Сервис принимает <!-- @comment{"id":"6862dbfb-…","anchor":"сырые",
-"text":"а чего не мокрые?","author":"User",…} -->сырые реквизиты
+Service accepts <!-- @comment{"id":"6862dbfb-…","anchor":"raw",
+"text":"why not wet?","author":"User",…} -->raw counterparty details
 ```
 
-Одна короткая реплика превращает строку текста в триста символов JSON, и это
-попадает в дифф документа. Якорь — только соседний контекст, без реанкоринга:
-правишь абзац — привязка молча плывёт.
+One short remark turns a line of prose into three hundred characters of JSON,
+and that lands in the document's diff. The anchor is only the surrounding
+context, with no re-anchoring: edit the paragraph and the attachment silently
+drifts.
 
-Изоляция. При первом же испытании комментарий приземлился не в тот файл,
-который мы открывали: вьюер по умолчанию доверяет всей домашней директории и
-даёт навигацию по ней.
+Isolation. On the very first trial the comment landed in a file we had not
+opened: the viewer trusts the whole home directory by default and offers
+navigation across it.
 
-Форк. Хранение не изолировано в слой: `src/lib/comment-parser.ts` — 2061
-строка, и почти каждый из 28 экспортов имеет сигнатуру
-`(rawMarkdown: string, …) → string`. Предпосылка «документ это строка, внутри
-которой лежат комментарии» зашита в типы, поэтому перевод на сайдкар означает
-переписывание ядра: все экспорты, `App.tsx` на 3517 строк, серверная часть и
-около пятнадцати e2e-тестов, проверяющих ровно наличие маркеров в файле. При
-34 тысячах строк и активном апстриме это вечный мерж ради чужого UI.
+Forking. Storage is not isolated behind a seam.
+`src/lib/comment-parser.ts` is 2061 lines, and almost every one of its 28
+exports has the signature `(rawMarkdown: string, …) => string`. The premise
+"a document is a string with comments inside it" is baked into the types, so
+moving to a sidecar means rewriting the core: every export, `App.tsx` at 3517
+lines, the server side, and around fifteen e2e specs that assert exactly the
+presence of markers in the file. At 34k lines with an active upstream, that is
+a permanent merge burden in exchange for someone else's UI.
 
-## Решение
+## Decision
 
-Свой инструмент на Go, который:
+Our own tool in Go, which:
 
-- хранит рецензии в MRSF-сайдкаре, оставляя документ нетронутым;
-- работает как language server, поэтому комментарии видны прямо в редакторе,
-  а предложенные правки принимаются одним действием;
-- даёт CLI с `--json`, через который агент читает комментарии и отвечает.
+- stores reviews in an MRSF sidecar, leaving the document untouched;
+- runs as a language server, so comments are visible in the editor and
+  suggested edits apply in one action;
+- offers a CLI with `--json`, through which an agent reads comments and replies.
 
-Ограничение, которое мы приняли осознанно: LSP — односторонний канал, ввести
-через него текст комментария нельзя. Ввод сделан задачами редактора
-(`ZED_SELECTED_TEXT`), а не протоколом.
+One limitation we accepted knowingly: LSP is a one-way channel and cannot ask a
+human for text. Comment input is done with editor tasks
+(`ZED_SELECTED_TEXT`), not through the protocol.
 
-## Последствия
+## Consequences
 
-- Мы зависим от чужой спецификации формата. Это осознанная плата за готовые
-  якоря; совместимость держим тестом против `mrsf validate`.
-- Правки `x_suggested_text` — наше расширение. Если MRSF когда-нибудь опишет
-  правки сам, переедем на его поля.
-- Браузерный просмотр остаётся вторым этапом и будет строиться на Milkdown, а
-  не на форке чужого вьюера.
+- We depend on someone else's format specification. That is the deliberate
+  price for working anchors; compatibility is held by testing against
+  `mrsf validate`.
+- `x_suggested_text` is our extension. If MRSF ever describes suggested edits
+  itself, we move to its fields.
+- Reading in a browser stays a second stage, and will be built on Milkdown
+  rather than a fork of someone else's viewer.
