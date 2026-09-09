@@ -28,9 +28,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-      - uses: golangci/golangci-lint-action@v6
+      # v8 is the action that runs golangci-lint v2, which this repo's
+      # .golangci.yml is written for.
+      - uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.12.2
 
   extension:
     runs-on: ubuntu-latest
