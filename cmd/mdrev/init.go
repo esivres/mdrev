@@ -320,7 +320,7 @@ func zedTasks(exe string) string {
 		map[string]any{
 			"label":                 threadsTask,
 			"command":               exe,
-			"args":                  []string{"threads", "$ZED_FILE"},
+			"args":                  []string{"threads", "$ZED_FILE", "--line", "$ZED_ROW"},
 			"use_new_terminal":      false,
 			"allow_concurrent_runs": false,
 			"reveal":                "always",
@@ -330,9 +330,16 @@ func zedTasks(exe string) string {
 }
 
 func zedKeymap(comment, question string) string {
+	// Zed tasks can only open in the dock or the centre area, never in a split,
+	// so the thread browser gets there in two steps: split the pane to the left,
+	// then spawn the task in the pane that split created.
+	threads := sameChord(comment, "t")
+	spawnThreads := shiftVariant(threads)
+
 	bindings := map[string]any{
-		comment:                 []any{"task::Spawn", map[string]any{"task_name": commentTask}},
-		sameChord(comment, "t"): []any{"task::Spawn", map[string]any{"task_name": threadsTask}},
+		comment:      []any{"task::Spawn", map[string]any{"task_name": commentTask}},
+		threads:      []any{"workspace::SendKeystrokes", "ctrl-k left " + spawnThreads},
+		spawnThreads: []any{"task::Spawn", map[string]any{"task_name": threadsTask}},
 	}
 	if question != "" {
 		bindings[question] = []any{"task::Spawn", map[string]any{"task_name": questionTask}}

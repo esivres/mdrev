@@ -59,11 +59,7 @@ func main() {
 		}
 		err = printComments(os.Args[2:])
 	case "threads":
-		if len(os.Args) < 3 {
-			fmt.Fprint(os.Stderr, usage)
-			os.Exit(2)
-		}
-		err = tui.Run(os.Args[2])
+		err = browseThreads(os.Args[2:])
 	case "comment":
 		err = addComment(os.Args[2:])
 	default:
@@ -74,6 +70,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, "mdrev:", err)
 		os.Exit(1)
 	}
+}
+
+func browseThreads(args []string) error {
+	fs := flag.NewFlagSet("threads", flag.ExitOnError)
+	line := fs.Int("line", 0, "line the reader is on; opens the thread about it")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: mdrev threads <file.md> [--line N]")
+	}
+	return tui.Run(fs.Arg(0), *line)
 }
 
 func printComments(args []string) error {

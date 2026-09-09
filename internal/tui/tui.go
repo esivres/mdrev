@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/esivres/mdrev/internal/anchor"
 	"github.com/esivres/mdrev/internal/mrsf"
 )
 
@@ -27,10 +28,12 @@ type mode int
 const (
 	browsing mode = iota
 	replying
+	composing
 )
 
 type model struct {
 	document string
+	line     int // where the editor's cursor was, 0 when unknown
 	threads  []thread
 	cursor   int
 	showAll  bool
@@ -39,6 +42,7 @@ type model struct {
 	body    viewport.Model
 	editor  textarea.Model
 	status  string
+	newID   string // thread to select after reloading, so a new comment opens
 	ready   bool
 	width   int
 	height  int
@@ -56,12 +60,15 @@ var (
 			BorderForeground(lipgloss.Color("8")).PaddingRight(2).MarginRight(2)
 )
 
-// Run opens the browser for a document's review threads.
-func Run(document string) error {
-	m := model{document: document, editor: newEditor()}
+// Run opens the browser for a document's review threads. A non-zero line is
+// where the reader was in the document, so the thread about that spot opens
+// first rather than whichever happens to be at the top.
+func Run(document string, line int) error {
+	m := model{document: document, line: line, editor: newEditor()}
 	if err := m.reload(); err != nil {
 		return err
 	}
+	m.cursor = m.nearestThread()
 	final, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	if err != nil {
 		return err
@@ -112,6 +119,40 @@ func (m *model) reload() error {
 	return nil
 }
 
+func (m model) nearestThread() int {
+	if m.line == 0 {
+		return 0
+	}
+	best, bestDist := 0, 1<<30
+	for i, t := range m.threads {
+		d := t.parent.Line - m.line
+		if d < 0 {
+			d = -d
+		}
+		if d < bestDist {
+			best, bestDist = i, d
+		}
+	}
+	return best
+}
+
+// lineQuote reads the document to anchor a new comment on the line the reader
+// came from.
+func (m model) lineQuote() string {
+	if m.line == 0 {
+		return ""
+	}
+	data, err := os.ReadFile(m.document)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	if m.line > len(lines) {
+		return ""
+	}
+	return anchor.After(lines[m.line-1])
+}
+
 func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -159,11 +200,20 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.body.GotoTop()
 		}
 
+	case "n":
+		m.mode = composing
+		m.editor.Reset()
+		m.editor.Placeholder = "New comment. Ctrl+D to save, Esc to cancel."
+		m.editor.Focus()
+		m.status = ""
+		return m, textarea.Blink
+
 	case "r":
 		if len(m.threads) == 0 {
 			return m, nil
 		}
 		m.mode = replying
+		m.editor.Placeholder = "Your reply. Ctrl+D to send, Esc to cancel."
 		m.editor.Reset()
 		m.editor.Focus()
 		m.status = ""
@@ -204,15 +254,29 @@ func (m model) updateReplying(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editor.Blur()
 			return m, nil
 		}
-		if err := m.saveReply(text); err != nil {
-			m.status = err.Error()
+		var err error
+		if m.mode == composing {
+			err = m.saveComment(text)
+			m.status = "comment saved"
 		} else {
+			err = m.saveReply(text)
 			m.status = "reply saved"
+		}
+		if err != nil {
+			m.status = err.Error()
 		}
 		m.mode = browsing
 		m.editor.Blur()
 		if err := m.reload(); err != nil {
 			m.status = err.Error()
+		}
+		if m.newID != "" {
+			for i, t := range m.threads {
+				if t.parent.ID == m.newID {
+					m.cursor = i
+				}
+			}
+			m.newID = ""
 		}
 		m.body.SetContent(m.threadView())
 		return m, nil
@@ -238,6 +302,28 @@ func (m *model) saveReply(text string) error {
 		return err
 	}
 	return sc.Save()
+}
+
+// saveComment opens a new thread on the line the reader came from.
+func (m *model) saveComment(text string) error {
+	sc, err := mrsf.LoadOrCreate(m.document)
+	if err != nil {
+		return err
+	}
+	added, err := sc.Add(mrsf.Comment{
+		Author:       author(),
+		Text:         text,
+		Line:         m.line,
+		SelectedText: m.lineQuote(),
+	})
+	if err != nil {
+		return err
+	}
+	if err := sc.Save(); err != nil {
+		return err
+	}
+	m.newID = added.ID
+	return nil
 }
 
 func (m *model) toggleResolved() tea.Cmd {
@@ -287,9 +373,9 @@ func (m model) View() string {
 	if !m.ready {
 		return "loading…"
 	}
-	if len(m.threads) == 0 {
+	if len(m.threads) == 0 && m.mode == browsing {
 		return fmt.Sprintf("\n  %s\n\n  No open comments.\n\n  %s\n",
-			titleStyle.Render(m.document), dimStyle.Render("a all · q quit"))
+			titleStyle.Render(m.document), dimStyle.Render("n new · a all · q quit"))
 	}
 
 	header := fmt.Sprintf("  %s  %s",
@@ -300,9 +386,9 @@ func (m model) View() string {
 		listStyle.Render(m.listView()),
 		m.bodyPane())
 
-	help := "j/k move · r reply · x resolve · a all · o open · q quit"
-	if m.mode == replying {
-		help = "ctrl+d send · esc cancel"
+	help := "j/k move · n new · r reply · x resolve · a all · o open · q quit"
+	if m.mode != browsing {
+		help = "ctrl+d save · esc cancel"
 	}
 	footer := "  " + dimStyle.Render(help)
 	if m.status != "" {
@@ -345,6 +431,13 @@ func (m model) listView() string {
 }
 
 func (m model) bodyPane() string {
+	if m.mode == composing {
+		header := "New comment"
+		if q := m.lineQuote(); q != "" {
+			header += " on " + quoteStyle.Render(q)
+		}
+		return header + "\n\n" + m.editor.View()
+	}
 	if m.mode == replying {
 		return m.editor.View()
 	}

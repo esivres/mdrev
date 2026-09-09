@@ -2,7 +2,8 @@ package lsp
 
 import (
 	"strings"
-	"unicode"
+
+	"github.com/esivres/mdrev/internal/anchor"
 )
 
 // Comments can be typed straight into the document using CriticMarkup's
@@ -20,10 +21,6 @@ type draft struct {
 	Start  int    // byte offset of the marker
 	End    int
 }
-
-// anchorWords is how much text before the marker is quoted as the anchor. Long
-// enough to be unique in a document, short enough to survive later edits.
-const anchorWords = 6
 
 func findDrafts(text string) []draft {
 	var out []draft
@@ -56,10 +53,10 @@ func findDrafts(text string) []draft {
 // naturally puts a remark. Failing that — the marker opens a line — it quotes
 // the words just after it.
 func anchorFor(text string, start, end int) string {
-	if a := lastWords(text[lineStart(text, start):start], anchorWords); a != "" {
+	if a := anchor.Before(text[lineStart(text, start):start]); a != "" {
 		return a
 	}
-	return firstWords(text[end:min(end+200, len(text))], anchorWords)
+	return anchor.After(text[end:min(end+200, len(text))])
 }
 
 func lineStart(text string, offset int) int {
@@ -67,31 +64,4 @@ func lineStart(text string, offset int) int {
 		return i + 1
 	}
 	return 0
-}
-
-func lastWords(s string, n int) string {
-	fields := strings.Fields(s)
-	if len(fields) > n {
-		fields = fields[len(fields)-n:]
-	}
-	return trimPunctuation(strings.Join(fields, " "))
-}
-
-func firstWords(s string, n int) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = s[:i]
-	}
-	fields := strings.Fields(s)
-	if len(fields) > n {
-		fields = fields[:n]
-	}
-	return trimPunctuation(strings.Join(fields, " "))
-}
-
-// trimPunctuation keeps the anchor from starting or ending mid-punctuation,
-// which reads badly when the comment is listed.
-func trimPunctuation(s string) string {
-	return strings.TrimFunc(s, func(r rune) bool {
-		return unicode.IsSpace(r) || strings.ContainsRune(",;:", r)
-	})
 }

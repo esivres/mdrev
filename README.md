@@ -80,9 +80,13 @@ whole threads live in a terminal UI:
 mdrev threads spec.md
 ```
 
-`j`/`k` move between threads, `r` replies, `x` resolves, `a` shows resolved
-ones too, `o` opens the document at the thread's line. `mdrev setup` binds it
-to `Alt+T` next to `Alt+C`.
+`j`/`k` move between threads, `n` starts a new one, `r` replies, `x` resolves,
+`a` shows resolved ones too, `o` opens the document at the thread's line.
+
+`mdrev setup` binds this to `Alt+T` next to `Alt+C`, passing the line you are
+on: the thread about that spot opens first, and a new comment anchors there.
+Zed tasks can only open in the dock or the centre area, so the binding splits
+the pane to the left first and the browser lands beside the document.
 
 The same from a terminal:
 
