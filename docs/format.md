@@ -53,8 +53,14 @@ keys the reference tool uses. Without this the recorded position describes
 where the text used to be, and decays with each edit above it. `mrsf reanchor`
 finds nothing left to change after mdrev has written.
 
-A comment whose fragment is gone is marked `x_reanchor_status: orphaned` and
-keeps its last known line. `mdrev list` shows it as `[anchor lost]`, and
+When the quoted text is not found exactly, the closest run of words in the
+document is taken instead, provided it still resembles the quote — editing the
+very sentence a comment is about is the ordinary case in review, and the remark
+is usually why it changed. `x_reanchor_score` records how close the match was:
+`1` for an exact one, less for a rewrite.
+
+A comment whose fragment is gone beyond recognition is marked
+`x_reanchor_status: orphaned` and keeps its last known line. `mdrev list` shows it as `[anchor lost]`, and
 `--json` carries `"orphaned": true`, so an agent knows it is answering a thread
 about a passage that no longer exists.
 

@@ -83,3 +83,50 @@ func column(p *int) string {
 	}
 	return strconv.Itoa(*p)
 }
+
+// Editing the very sentence a comment is about is the ordinary case in review —
+// the remark is usually why it changed — so losing the anchor exactly then is
+// when it hurts most.
+func TestEditedTextKeepsItsAnchor(t *testing.T) {
+	edited := "# Title\n\nThe threshold is not more than 3 today, after review.\n"
+	c := Comment{Line: 3, SelectedText: "The threshold is not more than 2 today."}
+
+	reanchor(edited, &c)
+
+	if c.Orphaned() {
+		t.Fatal("a sentence that was edited, not removed, must keep its anchor")
+	}
+	if c.Line != 3 {
+		t.Errorf("line: got %d, want 3", c.Line)
+	}
+	if score, _ := c.Extra[ReanchorScoreKey].(float64); score >= 1 || score < minSimilarity {
+		t.Errorf("an inexact match must be scored below 1 and above the floor, got %v", score)
+	}
+}
+
+// A rewrite that shares nothing but a few words is not the same sentence, and
+// pointing the comment at it would be worse than admitting the anchor is gone.
+func TestUnrelatedTextIsStillOrphaned(t *testing.T) {
+	c := Comment{Line: 3, SelectedText: "The threshold is not more than 2 today."}
+
+	reanchor("# Title\n\nDeduplication uses the tax number as its key.\n", &c)
+
+	if !c.Orphaned() {
+		t.Error("an unrelated line must not capture the comment")
+	}
+}
+
+// An exact match still wins, and still scores 1.
+func TestExactMatchIsPreferredOverAResemblance(t *testing.T) {
+	text := "The threshold is not more than 2 today.\n\nThe threshold is not more than 3 today.\n"
+	c := Comment{Line: 1, SelectedText: "The threshold is not more than 2 today."}
+
+	reanchor(text, &c)
+
+	if c.Line != 1 {
+		t.Errorf("line: got %d, want 1", c.Line)
+	}
+	if score, _ := c.Extra[ReanchorScoreKey].(float64); score != 1 {
+		t.Errorf("an exact match scores 1, got %v", c.Extra[ReanchorScoreKey])
+	}
+}
