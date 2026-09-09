@@ -402,8 +402,8 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 	return out
 }
 
-// draftDiagnostics surface comments typed into the document as CriticMarkup,
-// so the reader can see they are not filed yet.
+// Surfaces comments typed into the document, so the reader can see which have
+// not moved into the review yet.
 func draftDiagnostics(li *lineIndex) []Diagnostic {
 	out := []Diagnostic{}
 	for _, d := range findDrafts(li.text) {
@@ -411,7 +411,7 @@ func draftDiagnostics(li *lineIndex) []Diagnostic {
 			Range:    Range{Start: li.position(d.Start), End: li.position(d.End)},
 			Severity: severityInfo,
 			Source:   "review-draft",
-			Message:  "Unfiled comment: " + summary(d.Text),
+			Message:  "Not in the review yet: " + summary(d.Text),
 		})
 	}
 	return out
@@ -555,7 +555,7 @@ func fileDraftAction(uri string, li *lineIndex, dr draft) CodeAction {
 	}
 
 	return CodeAction{
-		Title: "File as review comment",
+		Title: "Move into the review: " + summary(dr.Text),
 		Kind:  "quickfix",
 		Data: &actionData{
 			Kind: "file", URI: uri, Anchor: dr.Anchor, Text: dr.Text,

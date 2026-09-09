@@ -62,9 +62,9 @@ CriticMarkup:
 Latency p99 must not exceed 200 ms per request. {>>too optimistic<<}
 ```
 
-The marker is highlighted as an unfiled comment; the code action on it
-(`ctrl-.` in Zed's default keymap, `Alt+Enter` with the JetBrains one) files it
-into the sidecar and removes it from the document, anchored to the words in
+The marker is highlighted as a comment not yet in the review; the code action on it
+(`ctrl-.` in Zed's default keymap, `Alt+Enter` with the JetBrains one) moves it
+into the sidecar and out of the document, anchored to the words in
 front of it. This needs no shortcuts and no
 configuration, and works in any editor with an LSP client.
 

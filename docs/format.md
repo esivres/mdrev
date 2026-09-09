@@ -84,9 +84,9 @@ A comment can be typed straight into the document as CriticMarkup:
 Latency p99 must not exceed 200 ms. {>>too optimistic<<}
 ```
 
-This is not storage — it is input. The marker is highlighted as unfiled, and
-its code action moves it into the sidecar, anchored to the words in front of
-it, while removing it from the document. Nothing stays behind.
+This is not storage — it is input. The marker is highlighted as a comment not
+yet in the review, and its code action moves it into the sidecar, anchored to
+the words in front of it, and out of the document. Nothing stays behind.
 
 ## Concurrent writes
 

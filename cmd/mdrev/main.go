@@ -254,7 +254,7 @@ func addComment(args []string) error {
 
 // requireDocument turns a typo into an error. Without it a misspelled path is
 // indistinguishable from a document with nothing to review, and a comment can
-// be filed against a file that does not exist.
+// be recorded against a file that does not exist.
 func requireDocument(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {

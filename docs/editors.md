@@ -12,7 +12,7 @@ comments. Zed gets an extension; elsewhere you point your client at
 - **Code actions**: on a comment proposing an edit, `Apply suggestion` replaces
   the quoted text and closes the thread, `Keep the current wording` closes it
   without changing anything; on a plain remark, `Resolve comment` closes it.
-  `File as review comment` moves a CriticMarkup draft into the sidecar.
+  `Move into the review` takes a CriticMarkup marker out of the document and into the sidecar.
 - **Live reload**: the sidecar's modification time is polled once a second, so
   a comment an agent adds from the CLI appears without touching the document.
 - **Recording the outcome**: applying a suggestion closes the thread as
