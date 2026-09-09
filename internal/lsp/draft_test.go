@@ -48,19 +48,12 @@ func TestFilingRemovesTheMarkerAndItsSpace(t *testing.T) {
 	text := "Latency p99 must not exceed 200 ms. {>>too optimistic<<}\n"
 	li := newLineIndex(text)
 
-	diags := draftDiagnostics(li)
-	if len(diags) != 1 {
-		t.Fatalf("want 1 draft diagnostic, got %d", len(diags))
-	}
-	drafts := map[int]draft{}
-	for _, d := range findDrafts(text) {
-		drafts[d.Start] = d
+	drafts := findDrafts(text)
+	if len(drafts) != 1 {
+		t.Fatalf("want 1 draft, got %d", len(drafts))
 	}
 
-	action, ok := fileDraftAction("file:///doc.md", li, drafts, diags[0])
-	if !ok {
-		t.Fatal("no code action offered for a draft")
-	}
+	action := fileDraftAction("file:///doc.md", li, drafts[0])
 	edits := action.Edit.Changes["file:///doc.md"]
 	if len(edits) != 1 || edits[0].NewText != "" {
 		t.Fatalf("want a single deletion, got %+v", edits)
@@ -70,5 +63,20 @@ func TestFilingRemovesTheMarkerAndItsSpace(t *testing.T) {
 	}
 	if got, want := edits[0].Range.End.Character, len(text)-1; got != want {
 		t.Errorf("deletion must cover the whole marker: got %d, want %d", got, want)
+	}
+}
+
+// The editor asks for actions at the cursor, an empty range, so an action must
+// still be offered when the cursor merely sits inside the anchored text.
+func TestActionsMatchAnEmptyCursorRange(t *testing.T) {
+	inside := Range{Start: Position{Line: 0, Character: 40}, End: Position{Line: 0, Character: 40}}
+	marker := Range{Start: Position{Line: 0, Character: 36}, End: Position{Line: 0, Character: 56}}
+	if !overlaps(marker, inside) {
+		t.Error("a cursor inside the range must match")
+	}
+
+	elsewhere := Range{Start: Position{Line: 4, Character: 0}, End: Position{Line: 4, Character: 0}}
+	if overlaps(marker, elsewhere) {
+		t.Error("a cursor on another line must not match")
 	}
 }

@@ -55,9 +55,6 @@ func TestDiagnosticsFollowTextNotRecordedLine(t *testing.T) {
 		t.Fatalf("want 1 open diagnostic (resolved ones must stay hidden), got %d: %+v", len(diags), diags)
 	}
 	d := diags[0]
-	if d.Code != "c1" {
-		t.Errorf("diagnostic must carry the comment id so code actions can find it, got %q", d.Code)
-	}
 	if d.Range.Start.Line != 4 {
 		t.Errorf("anchor should follow the text to line 4, got %d", d.Range.Start.Line)
 	}

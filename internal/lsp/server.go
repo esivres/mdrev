@@ -33,7 +33,6 @@ type Diagnostic struct {
 	Severity int    `json:"severity"`
 	Source   string `json:"source"`
 	Message  string `json:"message"`
-	Code     string `json:"code,omitempty"`
 }
 
 type TextEdit struct {
@@ -330,7 +329,6 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 			Severity: severityFor(c),
 			Source:   "review",
 			Message:  msg,
-			Code:     c.ID,
 		})
 	}
 	return out
@@ -398,7 +396,6 @@ func draftDiagnostics(li *lineIndex) []Diagnostic {
 			Severity: severityInfo,
 			Source:   "review-draft",
 			Message:  "Unfiled comment: " + firstLine(d.Text),
-			Code:     strconv.Itoa(d.Start),
 		})
 	}
 	return out
@@ -443,63 +440,56 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 		TextDocument struct {
 			URI string `json:"uri"`
 		} `json:"textDocument"`
-		Context struct {
-			Diagnostics []Diagnostic `json:"diagnostics"`
-		} `json:"context"`
+		Range Range `json:"range"`
 	}
 	json.Unmarshal(params, &p)
 
 	uri := p.TextDocument.URI
-	sc, err := mrsf.Load(uriToPath(uri))
-	if err != nil || sc == nil {
+	s.mu.Lock()
+	text, open := s.docs[uri]
+	s.mu.Unlock()
+	if !open {
 		return nil
 	}
-	s.mu.Lock()
-	text := s.docs[uri]
-	s.mu.Unlock()
 	li := newLineIndex(text)
 
-	drafts := map[int]draft{}
+	actions := []CodeAction{}
 	for _, d := range findDrafts(text) {
-		drafts[d.Start] = d
+		rng := Range{Start: li.position(d.Start), End: li.position(d.End)}
+		if overlaps(rng, p.Range) {
+			actions = append(actions, fileDraftAction(uri, li, d))
+		}
 	}
 
-	actions := []CodeAction{}
-	for _, d := range p.Context.Diagnostics {
-		if d.Source == "review-draft" {
-			if a, ok := fileDraftAction(uri, li, drafts, d); ok {
-				actions = append(actions, a)
-			}
+	sc, err := mrsf.Load(uriToPath(uri))
+	if err != nil || sc == nil {
+		return actions
+	}
+	for _, c := range sc.Comments {
+		if c.Resolved || c.ReplyTo != "" {
 			continue
 		}
-		if d.Source != "review" || d.Code == "" {
+		rng, anchored := locate(li, c)
+		if !overlaps(rng, p.Range) {
 			continue
 		}
-		c := sc.Find(d.Code)
-		if c == nil {
-			continue
-		}
-		if suggested, ok := c.SuggestedText(); ok {
-			if rng, anchored := locate(li, *c); anchored {
-				actions = append(actions, CodeAction{
-					Title:       "Apply suggestion: " + firstLine(suggested),
-					Kind:        "quickfix",
-					Diagnostics: []Diagnostic{d},
-					Edit: &WorkspaceEdit{Changes: map[string][]TextEdit{
-						uri: {{Range: rng, NewText: suggested}},
-					}},
-					Command: &Command{
-						Title:     "resolve",
-						Command:   "mdrev.resolve",
-						Arguments: []any{uri, c.ID},
-					},
-				})
-			}
+		if suggested, ok := c.SuggestedText(); ok && anchored {
+			actions = append(actions, CodeAction{
+				Title: "Apply suggestion: " + firstLine(suggested),
+				Kind:  "quickfix",
+				Edit: &WorkspaceEdit{Changes: map[string][]TextEdit{
+					uri: {{Range: rng, NewText: suggested}},
+				}},
+				Command: &Command{
+					Title:     "resolve",
+					Command:   "mdrev.resolve",
+					Arguments: []any{uri, c.ID},
+				},
+			})
 		}
 		actions = append(actions, CodeAction{
-			Title:       "Dismiss / mark resolved",
-			Kind:        "quickfix",
-			Diagnostics: []Diagnostic{d},
+			Title: "Dismiss / mark resolved: " + firstLine(c.Text),
+			Kind:  "quickfix",
 			Command: &Command{
 				Title:     "resolve",
 				Command:   "mdrev.resolve",
@@ -510,18 +500,19 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 	return actions
 }
 
+// overlaps reports whether two ranges touch. The editor asks for actions at
+// the cursor, which is an empty range, so touching at a boundary counts.
+func overlaps(a, b Range) bool {
+	return !before(a.End, b.Start) && !before(b.End, a.Start)
+}
+
+func before(p, q Position) bool {
+	return p.Line < q.Line || (p.Line == q.Line && p.Character < q.Character)
+}
+
 // fileDraftAction turns a CriticMarkup draft into a filed comment: the edit
 // removes the marker from the document, the command records it in the sidecar.
-func fileDraftAction(uri string, li *lineIndex, drafts map[int]draft, d Diagnostic) (CodeAction, bool) {
-	start, err := strconv.Atoi(d.Code)
-	if err != nil {
-		return CodeAction{}, false
-	}
-	dr, ok := drafts[start]
-	if !ok {
-		return CodeAction{}, false
-	}
-
+func fileDraftAction(uri string, li *lineIndex, dr draft) CodeAction {
 	// Swallow one leading space so removing an inline marker does not leave a
 	// double space behind.
 	from := dr.Start
@@ -531,20 +522,17 @@ func fileDraftAction(uri string, li *lineIndex, drafts map[int]draft, d Diagnost
 	line := li.position(dr.Start).Line + 1
 
 	return CodeAction{
-		Title:       "File as review comment",
-		Kind:        "quickfix",
-		Diagnostics: []Diagnostic{d},
+		Title: "File as review comment",
+		Kind:  "quickfix",
 		Edit: &WorkspaceEdit{Changes: map[string][]TextEdit{
 			uri: {{Range: Range{Start: li.position(from), End: li.position(dr.End)}, NewText: ""}},
 		}},
 		Command: &Command{
-			Title:   "file",
-			Command: "mdrev.file",
-			Arguments: []any{
-				uri, dr.Anchor, dr.Text, strconv.Itoa(line),
-			},
+			Title:     "file",
+			Command:   "mdrev.file",
+			Arguments: []any{uri, dr.Anchor, dr.Text, strconv.Itoa(line)},
 		},
-	}, true
+	}
 }
 
 func firstLine(s string) string {
