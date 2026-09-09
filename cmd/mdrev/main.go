@@ -53,10 +53,6 @@ func main() {
 	case "reply":
 		err = replyToComment(os.Args[2:])
 	case "list":
-		if len(os.Args) < 3 {
-			fmt.Fprint(os.Stderr, usage)
-			os.Exit(2)
-		}
 		err = printComments(os.Args[2:])
 	case "threads":
 		err = browseThreads(os.Args[2:])
@@ -87,10 +83,14 @@ func browseThreads(args []string) error {
 func printComments(args []string) error {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "machine-readable output")
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	sc, err := mrsf.Load(args[0])
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: mdrev list <file.md> [--json]")
+	}
+	document := fs.Arg(0)
+	sc, err := mrsf.Load(document)
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func printComments(args []string) error {
 		return enc.Encode(open)
 	}
 	for _, c := range open {
-		fmt.Printf("%s  %s:%d", shortID(c.ID), filepath.Base(args[0]), c.Line)
+		fmt.Printf("%s  %s:%d", shortID(c.ID), filepath.Base(document), c.Line)
 		if c.Type != "" {
 			fmt.Printf("  [%s]", c.Type)
 		}

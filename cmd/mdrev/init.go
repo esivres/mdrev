@@ -329,25 +329,32 @@ func zedTasks(exe string) string {
 	})
 }
 
+// zedKeymap binds the review shortcuts twice: once for the plain editor and
+// once for vim's contexts. Bindings under "Editor" alone never fire in vim's
+// normal or visual mode, where the vim layer takes the key first.
 func zedKeymap(comment, question string) string {
 	// Zed tasks can only open in the dock or the centre area, never in a split,
 	// so the thread browser gets there in two steps: split the pane to the left,
-	// then spawn the task in the pane that split created.
+	// then spawn the task in the pane that split created. The split is bound to
+	// an action of ours rather than reusing ctrl-k left, which vim claims.
 	threads := sameChord(comment, "t")
 	spawnThreads := shiftVariant(threads)
+	splitLeft := shiftVariant(sameChord(comment, "s"))
 
 	bindings := map[string]any{
 		comment:      []any{"task::Spawn", map[string]any{"task_name": commentTask}},
-		threads:      []any{"workspace::SendKeystrokes", "ctrl-k left " + spawnThreads},
+		threads:      []any{"workspace::SendKeystrokes", splitLeft + " " + spawnThreads},
 		spawnThreads: []any{"task::Spawn", map[string]any{"task_name": threadsTask}},
+		splitLeft:    "pane::SplitLeft",
 	}
 	if question != "" {
 		bindings[question] = []any{"task::Spawn", map[string]any{"task_name": questionTask}}
 	}
-	return mustJSON([]any{map[string]any{
-		"context":  "Editor",
-		"bindings": bindings,
-	}})
+
+	return mustJSON([]any{
+		map[string]any{"context": "Editor && !VimControl", "bindings": bindings},
+		map[string]any{"context": "VimControl && !menu", "bindings": bindings},
+	})
 }
 
 func mustJSON(v any) string {
