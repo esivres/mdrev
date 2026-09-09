@@ -81,8 +81,9 @@ Opens the terminal UI over one document.
 | key | action |
 |---|---|
 | `j` / `k` | move between threads |
+| `ctrl+d` / `ctrl+u` | scroll the thread by half a page (`f`/`b` for a full one) |
 | `n` | start a new thread on the line you came from |
-| `r` | reply to the selected thread |
+| `r` | reply to the selected thread (`Ctrl+S` sends, `Esc` cancels) |
 | `x` | resolve or reopen |
 | `a` | show resolved threads too |
 | `o` | open the document at the thread's line in `$EDITOR` |

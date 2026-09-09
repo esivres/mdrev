@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/esivres/mdrev/internal/mrsf"
 )
 
 const doc = `# Заголовок
@@ -137,4 +139,45 @@ func diagnosticsFor(t *testing.T, path, text string) []Diagnostic {
 
 func frame(buf *bytes.Buffer, body string) {
 	fmt.Fprintf(buf, "Content-Length: %d\r\n\r\n%s", len(body), body)
+}
+
+// A suggestion that has been applied must close its thread, however it was
+// applied: by the code action, or by the author typing the change. Otherwise
+// resolved work keeps showing up as open review.
+func TestAppliedSuggestionClosesItsThread(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	write(t, path, doc)
+	write(t, path+".review.yaml", sidecar)
+
+	edited := strings.Replace(doc, "не превышает 2", "не превышает 1", 1)
+	s := NewServer(&bytes.Buffer{})
+	s.setDoc("file://"+path, edited)
+	s.closeAppliedSuggestions("file://" + path)
+
+	sc, err := mrsf.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := sc.Find("c1"); c == nil || !c.Resolved {
+		t.Error("thread must be resolved once its suggested text is in the document")
+	}
+}
+
+// While the original text is still there the suggestion is merely proposed,
+// and closing it would hide a decision the author has not made.
+func TestUnappliedSuggestionStaysOpen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	write(t, path, doc)
+	write(t, path+".review.yaml", sidecar)
+
+	s := NewServer(&bytes.Buffer{})
+	s.setDoc("file://"+path, doc)
+	s.closeAppliedSuggestions("file://" + path)
+
+	sc, _ := mrsf.Load(path)
+	if c := sc.Find("c1"); c == nil || c.Resolved {
+		t.Error("thread must stay open while the original fragment is in the document")
+	}
 }

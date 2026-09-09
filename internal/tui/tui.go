@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -85,7 +86,7 @@ func Run(document string, line int) error {
 
 func newEditor() textarea.Model {
 	ta := textarea.New()
-	ta.Placeholder = "Your reply. Ctrl+D to send, Esc to cancel."
+	ta.Placeholder = "Your reply. Ctrl+S to send, Esc to cancel."
 	ta.ShowLineNumbers = false
 	ta.SetHeight(6)
 	return ta
@@ -134,7 +135,7 @@ func (m model) currentLine(c mrsf.Comment) int {
 		return c.Line
 	}
 	lines := strings.Split(m.docText, "\n")
-	return nearestLineWith(lines, c.SelectedText, c.Line-1) + 1
+	return anchor.NearestLine(lines, c.SelectedText, c.Line-1) + 1
 }
 
 func (m model) nearestThread() int {
@@ -176,7 +177,7 @@ func (m model) lineQuote() string {
 // enough, and switching to the document to find it defeats the browser.
 func paragraphAt(text string, line int, quote string) string {
 	lines := strings.Split(text, "\n")
-	idx := nearestLineWith(lines, quote, line-1)
+	idx := anchor.NearestLine(lines, quote, line-1)
 	if idx < 0 || idx >= len(lines) {
 		return ""
 	}
@@ -241,7 +242,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) layout() {
 	listWidth := min(42, max(20, m.width/3))
 	bodyWidth := max(20, m.width-listWidth-4)
-	m.body = viewport.New(bodyWidth, max(3, m.height-4))
+	m.body = viewport.New(bodyWidth, max(3, m.height-5))
+	// j/k and the arrows move between threads, so the viewport keeps only the
+	// paging keys and scrolls the thread itself.
+	km := viewport.DefaultKeyMap()
+	km.Up = key.NewBinding()
+	km.Down = key.NewBinding()
+	m.body.KeyMap = km
 	m.editor.SetWidth(bodyWidth)
 }
 
@@ -266,7 +273,7 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		m.mode = composing
 		m.editor.Reset()
-		m.editor.Placeholder = "New comment. Ctrl+D to save, Esc to cancel."
+		m.editor.Placeholder = "New comment. Ctrl+S to save, Esc to cancel."
 		m.editor.Focus()
 		m.status = ""
 		return m, textarea.Blink
@@ -276,7 +283,7 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.mode = replying
-		m.editor.Placeholder = "Your reply. Ctrl+D to send, Esc to cancel."
+		m.editor.Placeholder = "Your reply. Ctrl+S to send, Esc to cancel."
 		m.editor.Reset()
 		m.editor.Focus()
 		m.status = ""
@@ -310,7 +317,7 @@ func (m model) updateReplying(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = browsing
 		m.editor.Blur()
 		return m, nil
-	case "ctrl+d":
+	case "ctrl+s", "ctrl+d":
 		text := strings.TrimSpace(m.editor.Value())
 		if text == "" {
 			m.mode = browsing
@@ -449,15 +456,24 @@ func (m model) View() string {
 		listStyle.Render(m.listView()),
 		m.bodyPane())
 
-	help := "j/k move · n new · r reply · x resolve · a all · o open · q quit"
+	help := "j/k thread · ctrl+d/ctrl+u scroll · n new · r reply · x resolve · a all · o open · q quit"
 	if m.mode != browsing {
-		help = "ctrl+d save · esc cancel"
+		help = "ctrl+s save · esc cancel"
 	}
 	footer := "  " + dimStyle.Render(help)
 	if m.status != "" {
 		footer += "  " + m.status
 	}
-	return header + "\n" + panes + "\n" + footer
+	return header + m.scrollHint() + "\n" + panes + "\n" + footer
+}
+
+// scrollHint tells the reader that a thread continues past the pane, which is
+// otherwise invisible and makes long discussions look truncated.
+func (m model) scrollHint() string {
+	if m.mode != browsing || m.body.AtBottom() && m.body.AtTop() {
+		return ""
+	}
+	return "  " + dimStyle.Render(fmt.Sprintf("scroll %3.0f%%", m.body.ScrollPercent()*100))
 }
 
 func (m model) listView() string {

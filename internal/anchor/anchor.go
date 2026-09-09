@@ -42,3 +42,40 @@ func trim(s string) string {
 		return unicode.IsSpace(r) || strings.ContainsRune(",;:", r)
 	})
 }
+
+// NearestLine returns the 0-based line of the occurrence of needle closest to
+// a line already known, or that line when the needle is absent. A fragment can
+// repeat in a document — in prose and again inside a diagram — so "somewhere in
+// the text" is never a good enough answer.
+func NearestLine(lines []string, needle string, near int) int {
+	if needle == "" {
+		return near
+	}
+	best, bestDist := -1, 1<<30
+	for i, l := range lines {
+		if !strings.Contains(l, needle) {
+			continue
+		}
+		d := i - near
+		if d < 0 {
+			d = -d
+		}
+		if d < bestDist {
+			best, bestDist = i, d
+		}
+	}
+	if best < 0 {
+		return near
+	}
+	return best
+}
+
+// Found reports whether needle occurs at all.
+func Found(lines []string, needle string) bool {
+	for _, l := range lines {
+		if strings.Contains(l, needle) {
+			return true
+		}
+	}
+	return false
+}

@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/esivres/mdrev/internal/anchor"
 	"github.com/esivres/mdrev/internal/mrsf"
 )
 
@@ -198,6 +199,7 @@ func (s *Server) handle(msg *rpcMessage) {
 		}
 		json.Unmarshal(msg.Params, &p)
 		s.setDoc(p.TextDocument.URI, p.TextDocument.Text)
+		s.closeAppliedSuggestions(p.TextDocument.URI)
 		s.publish(p.TextDocument.URI)
 	case "textDocument/didChange":
 		var p struct {
@@ -211,6 +213,7 @@ func (s *Server) handle(msg *rpcMessage) {
 		json.Unmarshal(msg.Params, &p)
 		if len(p.ContentChanges) > 0 {
 			s.setDoc(p.TextDocument.URI, p.ContentChanges[len(p.ContentChanges)-1].Text)
+			s.closeAppliedSuggestions(p.TextDocument.URI)
 			s.publish(p.TextDocument.URI)
 		}
 	case "textDocument/didSave":
@@ -220,6 +223,7 @@ func (s *Server) handle(msg *rpcMessage) {
 			} `json:"textDocument"`
 		}
 		json.Unmarshal(msg.Params, &p)
+		s.closeAppliedSuggestions(p.TextDocument.URI)
 		s.publish(p.TextDocument.URI)
 	case "textDocument/didClose":
 		var p struct {
@@ -330,6 +334,58 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 		})
 	}
 	return out
+}
+
+// closeAppliedSuggestions resolves a thread once its proposed text has taken
+// the place of the fragment it replaces. Relying on the code action's command
+// to do this is not enough: the human may apply the edit by hand, and a client
+// is free to run the action's edit without its command.
+func (s *Server) closeAppliedSuggestions(uri string) {
+	s.mu.Lock()
+	text, ok := s.docs[uri]
+	s.mu.Unlock()
+	if !ok {
+		return
+	}
+	sc, err := mrsf.Load(uriToPath(uri))
+	if err != nil || sc == nil {
+		return
+	}
+
+	lines := strings.Split(text, "\n")
+	changed := false
+	for i := range sc.Comments {
+		c := &sc.Comments[i]
+		suggested, ok := c.SuggestedText()
+		if !ok || c.Resolved || c.SelectedText == "" {
+			continue
+		}
+		if !anchor.Found(lines, suggested) {
+			continue
+		}
+		// The fragment may still occur elsewhere — inside a diagram, say — so
+		// compare where each text sits relative to the comment, not whether it
+		// exists at all.
+		near := c.Line - 1
+		if !anchor.Found(lines, c.SelectedText) ||
+			dist(anchor.NearestLine(lines, suggested, near), near) <
+				dist(anchor.NearestLine(lines, c.SelectedText, near), near) {
+			c.Resolved = true
+			changed = true
+		}
+	}
+	if changed {
+		if err := sc.Save(); err != nil {
+			s.tracef("close applied: %v", err)
+		}
+	}
+}
+
+func dist(a, b int) int {
+	if a > b {
+		return a - b
+	}
+	return b - a
 }
 
 // draftDiagnostics surface comments typed into the document as CriticMarkup,
