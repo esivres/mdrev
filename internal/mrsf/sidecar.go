@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -57,7 +58,7 @@ func Path(document string) string {
 // Load returns nil, nil when there is no sidecar: no review is a normal state.
 func Load(document string) (*Sidecar, error) {
 	path := Path(document)
-	data, err := os.ReadFile(path)
+	data, err := readWhileReplaced(path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -70,6 +71,23 @@ func Load(document string) (*Sidecar, error) {
 	}
 	s.path = path
 	return &s, nil
+}
+
+// readWhileReplaced retries a read that collided with a save. Windows refuses
+// to open a file while it is being replaced, so a reader and a writer that
+// merely overlap — which is the normal case here — would otherwise surface as
+// an error to the user.
+func readWhileReplaced(path string) ([]byte, error) {
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		var data []byte
+		data, err = os.ReadFile(path)
+		if err == nil || os.IsNotExist(err) {
+			return data, err
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return nil, err
 }
 
 // save replaces the sidecar whole: a half-written file still parses as YAML
