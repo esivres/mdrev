@@ -39,6 +39,26 @@ markdownlint keep working next to mdrev.
 The second is required with `vim_mode` on: a binding under `Editor` alone never
 fires in normal or visual mode, because the vim layer takes the key first.
 
+### Shortcuts across platforms
+
+The defaults — `alt-c`, `alt-shift-c`, `alt-t` — are free in Zed's stock keymap
+on both Linux and macOS, so the same bindings work everywhere. On macOS `alt`
+is the Option key; a binding takes the key before it inserts a special
+character. Moving to `cmd` would be worse, not better: `cmd-alt-c` is already
+taken six times over, by `workspace::CopyPath` among others.
+
+Two conflicts worth knowing about, both resolved in our favour because a
+binding in a narrower context wins:
+
+- Linux binds `alt-t` to `task::Rerun` at the workspace level; ours applies in
+  the editor.
+- Vim's helix mode binds `alt-c` and `alt-shift-c`; ours replace them inside
+  the editor.
+
+If either matters to you, pick something else: `mdrev setup --keys ctrl-alt-k`.
+
+### Where the browser opens
+
 The thread browser opens in the dock below the document. A task can only reveal
 in the dock or the centre area — there is no split target — and the dock keeps
 the document in view, which is what the browser is for.
@@ -54,6 +74,13 @@ extension, which does declare a Markdown server:
 ```
 
 This works, but costs you markdownlint and has to be repeated in every project.
+
+### What the editor cannot do
+
+Zed's markdown preview is a built-in component, and the extension API has no
+hook into rendering — it covers language servers, slash commands, debug
+adapters and context servers, nothing else. So review comments cannot be shown
+in the rendered view; that is what the browser-based reader is for.
 
 ## Other editors
 
