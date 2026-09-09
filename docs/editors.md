@@ -26,7 +26,8 @@ travels as a code action the human accepts.
 
 ## Zed
 
-Install the mdrev extension, then run `mdrev setup` once. That is all: an
+Install the mdrev extension (`mdrev-language-server` in the extension
+registry), then run `mdrev setup` once. That is all: an
 extension declares the language server, and Zed starts it for Markdown without
 any settings file. Zed runs several servers per language, so marksman or
 markdownlint keep working next to mdrev.

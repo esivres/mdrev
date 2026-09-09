@@ -303,7 +303,7 @@ func zedSettings(exe string) string {
 
 func ownExtensionInstalled() bool {
 	_, err := os.Stat(filepath.Join(os.Getenv("HOME"),
-		".local/share/zed/extensions/installed/mdrev/extension.toml"))
+		".local/share/zed/extensions/installed/mdrev-language-server/extension.toml"))
 	return err == nil
 }
 

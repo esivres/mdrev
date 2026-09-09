@@ -3,3 +3,4 @@
 /sandbox/
 /.zed/
 zed-extension/target/
+zed-extension/extension.wasm
