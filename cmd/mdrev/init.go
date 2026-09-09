@@ -315,16 +315,16 @@ func zedTasks(exe string) string {
 	return mustJSON([]any{
 		task(commentTask),
 		task(questionTask, "--type", "question"),
-		// The thread browser is a full-screen UI, so it gets the centre pane
-		// rather than the dock, and takes no selection.
+		// The thread browser takes no selection, and lives in the dock beside
+		// the document rather than as an editor tab.
 		map[string]any{
 			"label":                 threadsTask,
 			"command":               exe,
-			"args":                  []string{"threads", "$ZED_FILE", "--line", "$ZED_ROW"},
+			"args":                  []string{"threads", "--line", "$ZED_ROW", "$ZED_FILE"},
 			"use_new_terminal":      false,
 			"allow_concurrent_runs": false,
 			"reveal":                "always",
-			"reveal_target":         "center",
+			"reveal_target":         "dock",
 		},
 	})
 }
@@ -333,19 +333,9 @@ func zedTasks(exe string) string {
 // once for vim's contexts. Bindings under "Editor" alone never fire in vim's
 // normal or visual mode, where the vim layer takes the key first.
 func zedKeymap(comment, question string) string {
-	// Zed tasks can only open in the dock or the centre area, never in a split,
-	// so the thread browser gets there in two steps: split the pane to the left,
-	// then spawn the task in the pane that split created. The split is bound to
-	// an action of ours rather than reusing ctrl-k left, which vim claims.
-	threads := sameChord(comment, "t")
-	spawnThreads := shiftVariant(threads)
-	splitLeft := shiftVariant(sameChord(comment, "s"))
-
 	bindings := map[string]any{
-		comment:      []any{"task::Spawn", map[string]any{"task_name": commentTask}},
-		threads:      []any{"workspace::SendKeystrokes", splitLeft + " " + spawnThreads},
-		spawnThreads: []any{"task::Spawn", map[string]any{"task_name": threadsTask}},
-		splitLeft:    "pane::SplitLeft",
+		comment:                 []any{"task::Spawn", map[string]any{"task_name": commentTask}},
+		sameChord(comment, "t"): []any{"task::Spawn", map[string]any{"task_name": threadsTask}},
 	}
 	if question != "" {
 		bindings[question] = []any{"task::Spawn", map[string]any{"task_name": questionTask}}

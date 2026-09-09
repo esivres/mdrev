@@ -39,10 +39,9 @@ markdownlint keep working next to mdrev.
 The second is required with `vim_mode` on: a binding under `Editor` alone never
 fires in normal or visual mode, because the vim layer takes the key first.
 
-The thread browser opens in a split to the left of the document. A task can
-only reveal in the dock or the centre area, so the shortcut chains two actions
-— a split of our own binding, then the task. It does not reuse Zed's default
-`ctrl-k left`, which vim claims.
+The thread browser opens in the dock below the document. A task can only reveal
+in the dock or the centre area — there is no split target — and the dock keeps
+the document in view, which is what the browser is for.
 
 ### Without the extension
 

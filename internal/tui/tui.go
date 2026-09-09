@@ -21,6 +21,7 @@ import (
 type thread struct {
 	parent  mrsf.Comment
 	replies []mrsf.Comment
+	line    int // where the anchor actually is now, not where it was recorded
 }
 
 type mode int
@@ -33,7 +34,8 @@ const (
 
 type model struct {
 	document string
-	line     int // where the editor's cursor was, 0 when unknown
+	docText  string // read alongside the sidecar, to show the text under discussion
+	line     int    // where the editor's cursor was, 0 when unknown
 	threads  []thread
 	cursor   int
 	showAll  bool
@@ -56,7 +58,9 @@ var (
 	quoteStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	authorStyle   = lipgloss.NewStyle().Bold(true)
 	suggestStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	listStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, true, false, false).
+	contextStyle  = lipgloss.NewStyle().Faint(true).Border(lipgloss.NormalBorder(), false, false, false, true).
+			BorderForeground(lipgloss.Color("8")).PaddingLeft(1)
+	listStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, true, false, false).
 			BorderForeground(lipgloss.Color("8")).PaddingRight(2).MarginRight(2)
 )
 
@@ -88,6 +92,9 @@ func newEditor() textarea.Model {
 }
 
 func (m *model) reload() error {
+	if data, err := os.ReadFile(m.document); err == nil {
+		m.docText = string(data)
+	}
 	sc, err := mrsf.Load(m.document)
 	if err != nil {
 		return err
@@ -106,7 +113,7 @@ func (m *model) reload() error {
 			continue
 		}
 		byID[c.ID] = len(m.threads)
-		m.threads = append(m.threads, thread{parent: c})
+		m.threads = append(m.threads, thread{parent: c, line: m.currentLine(c)})
 	}
 	for _, c := range sc.Comments {
 		if i, ok := byID[c.ReplyTo]; ok {
@@ -119,13 +126,24 @@ func (m *model) reload() error {
 	return nil
 }
 
+// currentLine locates a comment's anchor in the document as it is now. The
+// recorded line drifts the moment text is inserted above it, and selecting a
+// thread by a stale line lands the reader on the wrong discussion.
+func (m model) currentLine(c mrsf.Comment) int {
+	if m.docText == "" {
+		return c.Line
+	}
+	lines := strings.Split(m.docText, "\n")
+	return nearestLineWith(lines, c.SelectedText, c.Line-1) + 1
+}
+
 func (m model) nearestThread() int {
 	if m.line == 0 {
 		return 0
 	}
 	best, bestDist := 0, 1<<30
 	for i, t := range m.threads {
-		d := t.parent.Line - m.line
+		d := t.line - m.line
 		if d < 0 {
 			d = -d
 		}
@@ -151,6 +169,51 @@ func (m model) lineQuote() string {
 		return ""
 	}
 	return anchor.After(lines[m.line-1])
+}
+
+// paragraphAt returns the block of text a comment is about. A reader needs the
+// surrounding sentence to judge a remark; the quoted fragment alone is not
+// enough, and switching to the document to find it defeats the browser.
+func paragraphAt(text string, line int, quote string) string {
+	lines := strings.Split(text, "\n")
+	idx := nearestLineWith(lines, quote, line-1)
+	if idx < 0 || idx >= len(lines) {
+		return ""
+	}
+
+	first, last := idx, idx
+	for first > 0 && strings.TrimSpace(lines[first-1]) != "" {
+		first--
+	}
+	for last < len(lines)-1 && strings.TrimSpace(lines[last+1]) != "" {
+		last++
+	}
+	return strings.Join(lines[first:last+1], "\n")
+}
+
+// nearestLineWith prefers an occurrence of the quote over the recorded line,
+// which goes stale as soon as the document is edited above it.
+func nearestLineWith(lines []string, quote string, fallback int) int {
+	if quote == "" {
+		return fallback
+	}
+	best, bestDist := -1, 1<<30
+	for i, l := range lines {
+		if !strings.Contains(l, quote) {
+			continue
+		}
+		d := i - fallback
+		if d < 0 {
+			d = -d
+		}
+		if d < bestDist {
+			best, bestDist = i, d
+		}
+	}
+	if best < 0 {
+		return fallback
+	}
+	return best
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -364,7 +427,7 @@ func (m *model) openInEditor() tea.Cmd {
 		return nil
 	}
 	parts := strings.Fields(editor)
-	target := fmt.Sprintf("%s:%d", m.document, m.threads[m.cursor].parent.Line)
+	target := fmt.Sprintf("%s:%d", m.document, m.threads[m.cursor].line)
 	cmd := exec.Command(parts[0], append(parts[1:], target)...)
 	return tea.ExecProcess(cmd, func(error) tea.Msg { return nil })
 }
@@ -402,7 +465,7 @@ func (m model) listView() string {
 	for i, t := range m.threads {
 		quote := t.parent.SelectedText
 		if quote == "" {
-			quote = fmt.Sprintf("line %d", t.parent.Line)
+			quote = fmt.Sprintf("line %d", t.line)
 		}
 		meta := t.parent.Author
 		if t.parent.Type != "" {
@@ -451,10 +514,16 @@ func (m model) threadView() string {
 	t := m.threads[m.cursor]
 
 	var b strings.Builder
-	if t.parent.SelectedText != "" {
+	if para := paragraphAt(m.docText, t.line, t.parent.SelectedText); para != "" {
+		if t.parent.SelectedText != "" {
+			para = strings.Replace(para, t.parent.SelectedText,
+				quoteStyle.Render(t.parent.SelectedText), 1)
+		}
+		b.WriteString(contextStyle.Width(m.body.Width).Render(para) + "\n")
+	} else if t.parent.SelectedText != "" {
 		b.WriteString(quoteStyle.Render(t.parent.SelectedText) + "\n")
 	}
-	b.WriteString(dimStyle.Render(fmt.Sprintf("%s:%d", m.document, t.parent.Line)) + "\n\n")
+	b.WriteString(dimStyle.Render(fmt.Sprintf("%s:%d", m.document, t.line)) + "\n\n")
 
 	writeComment := func(c mrsf.Comment) {
 		b.WriteString(authorStyle.Render(c.Author) + "  " + dimStyle.Render(when(c.Timestamp)) + "\n")

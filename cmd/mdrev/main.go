@@ -71,25 +71,27 @@ func main() {
 func browseThreads(args []string) error {
 	fs := flag.NewFlagSet("threads", flag.ExitOnError)
 	line := fs.Int("line", 0, "line the reader is on; opens the thread about it")
-	if err := fs.Parse(args); err != nil {
+	rest, err := parseFlags(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() < 1 {
+	if len(rest) < 1 {
 		return fmt.Errorf("usage: mdrev threads <file.md> [--line N]")
 	}
-	return tui.Run(fs.Arg(0), *line)
+	return tui.Run(rest[0], *line)
 }
 
 func printComments(args []string) error {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "machine-readable output")
-	if err := fs.Parse(args); err != nil {
+	rest, err := parseFlags(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() < 1 {
+	if len(rest) < 1 {
 		return fmt.Errorf("usage: mdrev list <file.md> [--json]")
 	}
-	document := fs.Arg(0)
+	document := rest[0]
 	sc, err := mrsf.Load(document)
 	if err != nil {
 		return err

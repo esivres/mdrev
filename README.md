@@ -83,10 +83,12 @@ mdrev threads spec.md
 `j`/`k` move between threads, `n` starts a new one, `r` replies, `x` resolves,
 `a` shows resolved ones too, `o` opens the document at the thread's line.
 
+Each thread is shown with the paragraph it is about, the anchored fragment
+highlighted inside it.
+
 `mdrev setup` binds this to `Alt+T` next to `Alt+C`, passing the line you are
 on: the thread about that spot opens first, and a new comment anchors there.
-Zed tasks can only open in the dock or the centre area, so the binding splits
-the pane to the left first and the browser lands beside the document.
+The browser opens in the dock, so the document stays in view.
 
 The same from a terminal:
 

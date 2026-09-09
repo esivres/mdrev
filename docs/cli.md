@@ -89,7 +89,12 @@ Opens the terminal UI over one document.
 | `q` | quit |
 
 `--line N` selects the thread nearest that line, and anchors a new comment
-there. The Zed task passes `$ZED_ROW` for this.
+there. The Zed task passes `$ZED_ROW` for this. Nearness is measured against
+where each anchor actually is in the document now, not the line recorded in the
+sidecar, which drifts as the document is edited.
+
+The selected thread is shown with the paragraph it is about, with the anchored
+fragment highlighted inside it.
 
 ## mdrev lsp
 
