@@ -69,7 +69,7 @@ front of it. This needs no shortcuts and no
 configuration, and works in any editor with an LSP client.
 
 Filed comments are underlined in the document; hovering shows the thread, and
-the code action menu offers "Apply suggestion" and "Keep the current wording"
+the code action menu offers "Apply suggestion" and "Keep current wording"
 on a proposed edit, or "Resolve comment" on a plain remark.
 
 If you would rather select text and press a key, `mdrev setup` also installs

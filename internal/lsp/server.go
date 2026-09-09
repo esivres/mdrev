@@ -517,7 +517,7 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 		// remark you have dealt with.
 		closeTitle := "Resolve comment: " + summary(c.Text)
 		if hasSuggestion {
-			closeTitle = "Keep the current wording: " + summary(c.SelectedText)
+			closeTitle = "Keep current wording: " + summary(c.SelectedText)
 		}
 		outcome := mrsf.OutcomeResolved
 		if hasSuggestion {
@@ -555,7 +555,7 @@ func fileDraftAction(uri string, li *lineIndex, dr draft) CodeAction {
 	}
 
 	return CodeAction{
-		Title: "Move into the review: " + summary(dr.Text),
+		Title: "Add to review: " + summary(dr.Text),
 		Kind:  "quickfix",
 		Data: &actionData{
 			Kind: "file", URI: uri, Anchor: dr.Anchor, Text: dr.Text,
@@ -633,8 +633,10 @@ func summary(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
 	}
-	if len([]rune(s)) > 50 {
-		s = string([]rune(s)[:50]) + "…"
+	// Short enough that the menu shows the whole entry rather than cutting it
+	// at an arbitrary width.
+	if len([]rune(s)) > 32 {
+		s = string([]rune(s)[:32]) + "…"
 	}
 	return s
 }
