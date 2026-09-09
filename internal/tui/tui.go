@@ -175,14 +175,15 @@ func (m model) lineQuote() string {
 	return anchor.After(lines[m.line-1])
 }
 
-// contextLines is how much of the document is shown above a thread. A
-// paragraph is the natural unit, but a markdown list or table runs for dozens
-// of lines without a blank one, and then every thread inside it shows the same
-// wall of text instead of the sentence it is about.
-const contextLines = 3
+// maxContextLines bounds a unit that is itself enormous — a long fenced block,
+// or a list item with a paragraph under it.
+const maxContextLines = 12
 
-// A remark cannot be judged without the sentence around it, and switching to
-// the document to find it defeats the browser.
+// A remark cannot be judged without the text around it, and switching to the
+// document to find it defeats the browser. The context is the markdown element
+// the anchor sits in — a list item, a table row, a fenced block — not the run
+// between blank lines: a list of forty items is one such run, and every thread
+// inside it would show the same wall of text.
 func paragraphAt(text string, line int, quote string) string {
 	lines := strings.Split(text, "\n")
 	idx := anchor.NearestLine(lines, quote, line-1)
@@ -190,19 +191,23 @@ func paragraphAt(text string, line int, quote string) string {
 		return ""
 	}
 
-	first, last := idx, idx
-	for first > 0 && idx-first < contextLines && strings.TrimSpace(lines[first-1]) != "" {
-		first--
-	}
-	for last < len(lines)-1 && last-idx < contextLines && strings.TrimSpace(lines[last+1]) != "" {
-		last++
+	first, last := unitAt(lines, idx)
+	trimmedAbove, trimmedBelow := false, false
+	if last-first+1 > maxContextLines {
+		half := (maxContextLines - 1) / 2
+		if first < idx-half {
+			first, trimmedAbove = idx-half, true
+		}
+		if last > idx+half {
+			last, trimmedBelow = idx+half, true
+		}
 	}
 
 	shown := strings.Join(lines[first:last+1], "\n")
-	if first > 0 && strings.TrimSpace(lines[first-1]) != "" {
+	if trimmedAbove {
 		shown = "…\n" + shown
 	}
-	if last < len(lines)-1 && strings.TrimSpace(lines[last+1]) != "" {
+	if trimmedBelow {
 		shown += "\n…"
 	}
 	return shown
