@@ -116,3 +116,24 @@ func read(t *testing.T, path string) string {
 	}
 	return string(b)
 }
+
+// An earlier version wrote these files whole, without markers. Merging beside
+// what it left would give the editor two of every task, so setup has to be able
+// to see the old entries.
+func TestStaleEntriesAreFoundOutsideOurBlock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tasks.json")
+	write(t, path, `[
+  { "label": "Comment on selection", "command": "mdrev" }
+]
+`)
+	if got := staleEntries(path, []string{"Comment on selection", "Review threads"}); len(got) != 1 || got[0] != "Comment on selection" {
+		t.Errorf("want the old entry reported, got %v", got)
+	}
+
+	if err := mergeBlock(path, `{"label": "Review threads"}`); err != nil {
+		t.Fatal(err)
+	}
+	if got := staleEntries(path, []string{"Review threads"}); len(got) != 0 {
+		t.Errorf("an entry inside our block is not stale, got %v", got)
+	}
+}

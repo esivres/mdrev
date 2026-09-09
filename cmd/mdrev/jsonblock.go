@@ -148,3 +148,27 @@ func boundTo(path, key string) string {
 	}
 	return "something"
 }
+
+// staleEntries finds our own entries left outside the managed block by an
+// earlier version, which wrote whole files. Merging beside them would leave the
+// editor with two of each task.
+func staleEntries(path string, names []string) []string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	text := string(data)
+	if i := strings.Index(text, blockBegin); i >= 0 {
+		if j := strings.Index(text[i:], blockEnd); j >= 0 {
+			text = text[:i] + text[i+j:]
+		}
+	}
+
+	var found []string
+	for _, name := range names {
+		if strings.Contains(text, `"`+name+`"`) {
+			found = append(found, name)
+		}
+	}
+	return found
+}

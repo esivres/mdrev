@@ -52,8 +52,17 @@ func setUpEditor(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := mergeBlock(filepath.Join(zedConfigDir(), "tasks.json"), zedTasks(exe)); err != nil {
+
+	tasksPath := filepath.Join(zedConfigDir(), "tasks.json")
+	ours := []string{commentTask, questionTask, threadsTask}
+	stale := staleEntries(tasksPath, ours)
+	if err := mergeBlock(tasksPath, zedTasks(exe)); err != nil {
 		return err
+	}
+	if len(stale) > 0 {
+		fmt.Printf("\n! %s already appear in %s outside the managed block.\n",
+			strings.Join(stale, ", "), tasksPath)
+		fmt.Println("  They were written by an older mdrev; delete them, or the editor lists each task twice.")
 	}
 
 	if !ownExtensionInstalled() {
