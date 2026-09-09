@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/esivres/mdrev/internal/lsp"
@@ -32,7 +33,19 @@ An anchor is --quote "fragment" plus --line N: the comment follows the text as
 the document is edited, and is flagged as orphaned once the fragment is gone.
 `
 
-var version = "dev"
+// Stamped by the release build; go install leaves it unset, so fall back to
+// the module version the toolchain records.
+var version = ""
+
+func versionString() string {
+	if version != "" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+		return info.Main.Version
+	}
+	return "dev"
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -42,7 +55,7 @@ func main() {
 	var err error
 	switch os.Args[1] {
 	case "--version", "-v", "version":
-		fmt.Println("mdrev", version)
+		fmt.Println("mdrev", versionString())
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	case "lsp":
@@ -50,7 +63,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "mdrev lsp speaks the language server protocol on stdio; editors start it")
 			os.Exit(2)
 		}
-		lsp.Version = version
+		lsp.Version = versionString()
 		err = lsp.NewServer(os.Stdout).Run(os.Stdin)
 	case "setup":
 		err = setUpEditor(os.Args[2:])
