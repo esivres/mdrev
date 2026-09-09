@@ -46,9 +46,23 @@ cd ~/documents/spec
 mdrev init --agent-docs both            # AGENTS.md section and/or a Claude Code skill
 ```
 
-In the editor: select text, press the shortcut, type a comment. It gets
-underlined in the document; hovering shows the text, and the code action menu
-offers "Apply suggestion" and "Dismiss / mark resolved".
+In the editor, type a comment straight into the text where you want it, using
+CriticMarkup:
+
+```markdown
+Latency p99 must not exceed 200 ms per request. {>>too optimistic<<}
+```
+
+The marker is highlighted as an unfiled comment; the code action on it (`Alt+Enter`
+in most keymaps) files it into the sidecar and removes it from the document,
+anchored to the words in front of it. This needs no shortcuts and no
+configuration, and works in any editor with an LSP client.
+
+Filed comments are underlined in the document; hovering shows the thread, and
+the code action menu offers "Apply suggestion" and "Dismiss / mark resolved".
+
+If you would rather select text and press a key, `mdrev setup` also installs
+Zed tasks bound to a shortcut of your choice.
 
 The same from a terminal:
 
@@ -69,9 +83,12 @@ Without the extension, `mdrev init` falls back to overriding the binary of the
 markdownlint extension, which does declare a Markdown server. That works, but
 costs you markdownlint and has to be repeated per project.
 
-Comment input does not go through LSP: the protocol has no way to ask a human
-for text. `setup` writes Zed tasks that use `ZED_SELECTED_TEXT` and binds them
-to your shortcut.
+Comment input cannot go through LSP directly: the protocol has no way to ask a
+human for text, and Zed supports neither `window/showDocument` nor
+`workspace/applyEdit`, so a server cannot open a scratch buffer or edit the
+document on its own. Hence CriticMarkup markers — the document is the one input
+surface a language server can offer. The Zed tasks `setup` installs are the
+alternative for people who prefer selecting text and pressing a key.
 
 ## Compatibility
 

@@ -10,7 +10,9 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -178,7 +180,7 @@ func (s *Server) handle(msg *rpcMessage) {
 				"textDocumentSync":   1, // full
 				"codeActionProvider": true,
 				"executeCommandProvider": map[string]any{
-					"commands": []string{"mdrev.resolve"},
+					"commands": []string{"mdrev.resolve", "mdrev.file"},
 				},
 			},
 			"serverInfo": map[string]any{"name": "mdrev", "version": "0.1.0"},
@@ -286,7 +288,7 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 		return nil
 	}
 	if sc == nil {
-		return nil
+		return draftDiagnostics(newLineIndex(text))
 	}
 
 	// Replies share their parent's anchor, so they belong inside the parent's
@@ -299,7 +301,7 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 	}
 
 	li := newLineIndex(text)
-	out := []Diagnostic{}
+	out := draftDiagnostics(li)
 	for _, c := range sc.Comments {
 		if c.Resolved || c.ReplyTo != "" {
 			continue
@@ -325,6 +327,22 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 			Source:   "review",
 			Message:  msg,
 			Code:     c.ID,
+		})
+	}
+	return out
+}
+
+// draftDiagnostics surface comments typed into the document as CriticMarkup,
+// so the reader can see they are not filed yet.
+func draftDiagnostics(li *lineIndex) []Diagnostic {
+	out := []Diagnostic{}
+	for _, d := range findDrafts(li.text) {
+		out = append(out, Diagnostic{
+			Range:    Range{Start: li.position(d.Start), End: li.position(d.End)},
+			Severity: severityInfo,
+			Source:   "review-draft",
+			Message:  "Unfiled comment: " + firstLine(d.Text),
+			Code:     strconv.Itoa(d.Start),
 		})
 	}
 	return out
@@ -385,8 +403,19 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 	s.mu.Unlock()
 	li := newLineIndex(text)
 
+	drafts := map[int]draft{}
+	for _, d := range findDrafts(text) {
+		drafts[d.Start] = d
+	}
+
 	actions := []CodeAction{}
 	for _, d := range p.Context.Diagnostics {
+		if d.Source == "review-draft" {
+			if a, ok := fileDraftAction(uri, li, drafts, d); ok {
+				actions = append(actions, a)
+			}
+			continue
+		}
 		if d.Source != "review" || d.Code == "" {
 			continue
 		}
@@ -425,6 +454,43 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 	return actions
 }
 
+// fileDraftAction turns a CriticMarkup draft into a filed comment: the edit
+// removes the marker from the document, the command records it in the sidecar.
+func fileDraftAction(uri string, li *lineIndex, drafts map[int]draft, d Diagnostic) (CodeAction, bool) {
+	start, err := strconv.Atoi(d.Code)
+	if err != nil {
+		return CodeAction{}, false
+	}
+	dr, ok := drafts[start]
+	if !ok {
+		return CodeAction{}, false
+	}
+
+	// Swallow one leading space so removing an inline marker does not leave a
+	// double space behind.
+	from := dr.Start
+	if from > 0 && li.text[from-1] == ' ' {
+		from--
+	}
+	line := li.position(dr.Start).Line + 1
+
+	return CodeAction{
+		Title:       "File as review comment",
+		Kind:        "quickfix",
+		Diagnostics: []Diagnostic{d},
+		Edit: &WorkspaceEdit{Changes: map[string][]TextEdit{
+			uri: {{Range: Range{Start: li.position(from), End: li.position(dr.End)}, NewText: ""}},
+		}},
+		Command: &Command{
+			Title:   "file",
+			Command: "mdrev.file",
+			Arguments: []any{
+				uri, dr.Anchor, dr.Text, strconv.Itoa(line),
+			},
+		},
+	}, true
+}
+
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
@@ -441,7 +507,10 @@ func (s *Server) executeCommand(params json.RawMessage) any {
 		Arguments []string `json:"arguments"`
 	}
 	json.Unmarshal(params, &p)
-	if p.Command != "mdrev.resolve" || len(p.Arguments) < 2 {
+	switch {
+	case p.Command == "mdrev.file" && len(p.Arguments) >= 4:
+		return s.fileDraft(p.Arguments[0], p.Arguments[1], p.Arguments[2], p.Arguments[3])
+	case p.Command != "mdrev.resolve" || len(p.Arguments) < 2:
 		return nil
 	}
 	uri, id := p.Arguments[0], p.Arguments[1]
@@ -462,4 +531,43 @@ func (s *Server) executeCommand(params json.RawMessage) any {
 	}
 	s.publish(uri)
 	return nil
+}
+
+// fileDraft records a comment the human typed into the document. The author is
+// the human, not the agent, so it is left to the sidecar's default rather than
+// guessed here.
+func (s *Server) fileDraft(uri, anchor, text, line string) any {
+	sidecar, err := mrsf.LoadOrCreate(uriToPath(uri))
+	if err != nil {
+		s.tracef("file: %v", err)
+		return nil
+	}
+	n, _ := strconv.Atoi(line)
+	if _, err := sidecar.Add(mrsf.Comment{
+		Author:       localAuthor(),
+		Text:         text,
+		Line:         n,
+		SelectedText: anchor,
+	}); err != nil {
+		s.tracef("file: %v", err)
+		return nil
+	}
+	if err := sidecar.Save(); err != nil {
+		s.tracef("save: %v", err)
+		return nil
+	}
+	s.publish(uri)
+	return nil
+}
+
+// localAuthor names comments filed from the editor after the person at the
+// keyboard, falling back to the OS user when git has no name configured.
+func localAuthor() string {
+	out, err := exec.Command("git", "config", "user.name").Output()
+	if err == nil {
+		if name := strings.TrimSpace(string(out)); name != "" {
+			return name
+		}
+	}
+	return os.Getenv("USER")
 }
