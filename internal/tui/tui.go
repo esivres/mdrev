@@ -175,6 +175,12 @@ func (m model) lineQuote() string {
 	return anchor.After(lines[m.line-1])
 }
 
+// contextLines is how much of the document is shown above a thread. A
+// paragraph is the natural unit, but a markdown list or table runs for dozens
+// of lines without a blank one, and then every thread inside it shows the same
+// wall of text instead of the sentence it is about.
+const contextLines = 3
+
 // A remark cannot be judged without the sentence around it, and switching to
 // the document to find it defeats the browser.
 func paragraphAt(text string, line int, quote string) string {
@@ -185,13 +191,21 @@ func paragraphAt(text string, line int, quote string) string {
 	}
 
 	first, last := idx, idx
-	for first > 0 && strings.TrimSpace(lines[first-1]) != "" {
+	for first > 0 && idx-first < contextLines && strings.TrimSpace(lines[first-1]) != "" {
 		first--
 	}
-	for last < len(lines)-1 && strings.TrimSpace(lines[last+1]) != "" {
+	for last < len(lines)-1 && last-idx < contextLines && strings.TrimSpace(lines[last+1]) != "" {
 		last++
 	}
-	return strings.Join(lines[first:last+1], "\n")
+
+	shown := strings.Join(lines[first:last+1], "\n")
+	if first > 0 && strings.TrimSpace(lines[first-1]) != "" {
+		shown = "…\n" + shown
+	}
+	if last < len(lines)-1 && strings.TrimSpace(lines[last+1]) != "" {
+		shown += "\n…"
+	}
+	return shown
 }
 
 func (m model) Init() tea.Cmd { return nil }

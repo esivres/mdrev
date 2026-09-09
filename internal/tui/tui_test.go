@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -175,3 +176,31 @@ func TestReadingModeScrollsTheThreadAndEscReturns(t *testing.T) {
 }
 
 func readingMode() mode { return reading }
+
+// A markdown list or table runs for dozens of lines without a blank one. Taking
+// the whole block as context meant every thread inside it showed the same wall
+// of text, so selecting a thread appeared to change nothing.
+func TestContextIsBoundedInsideALongBlock(t *testing.T) {
+	var doc strings.Builder
+	for i := 1; i <= 40; i++ {
+		fmt.Fprintf(&doc, "%d. item number %d in a long list\n", i, i)
+	}
+
+	first := paragraphAt(doc.String(), 5, "item number 5")
+	second := paragraphAt(doc.String(), 30, "item number 30")
+
+	if first == second {
+		t.Fatal("two threads in the same block must not show identical context")
+	}
+	for _, para := range []string{first, second} {
+		if lines := strings.Count(para, "\n") + 1; lines > 2*contextLines+3 {
+			t.Errorf("context is %d lines, which is a wall of text:\n%s", lines, para)
+		}
+	}
+	if !strings.Contains(first, "item number 5") {
+		t.Errorf("the anchored line must be in its own context:\n%s", first)
+	}
+	if !strings.HasPrefix(second, "…") || !strings.HasSuffix(second, "…") {
+		t.Errorf("a trimmed context must say it was trimmed:\n%s", second)
+	}
+}
