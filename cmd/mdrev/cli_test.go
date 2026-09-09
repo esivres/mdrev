@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -15,6 +16,9 @@ import (
 func build(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "mdrev")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
 	out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
