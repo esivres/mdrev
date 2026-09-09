@@ -137,3 +137,60 @@ func TestStaleEntriesAreFoundOutsideOurBlock(t *testing.T) {
 		t.Errorf("an entry inside our block is not stale, got %v", got)
 	}
 }
+
+// An earlier version wrote these files whole. Merging beside what it left would
+// give the editor two of every task, and a warning is no help — the file is
+// already wrong by the time anyone reads it.
+func TestOldEntriesAreRemovedNotDuplicated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tasks.json")
+	write(t, path, `// mine, keep it
+[
+  { "label": "my own task", "command": "make" },
+  { "label": "Comment on selection", "command": "/old/path/mdrev" },
+  { "label": "Review threads", "command": "/old/path/mdrev" }
+]
+`)
+
+	err := mergeBlock(path, `{"label": "Comment on selection", "command": "/new/mdrev"}`,
+		"Comment on selection", "Review threads")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := read(t, path)
+	if n := strings.Count(got, `"Comment on selection"`); n != 1 {
+		t.Errorf("task appears %d times, want 1:\n%s", n, got)
+	}
+	if strings.Contains(got, "/old/path/mdrev") {
+		t.Errorf("the old entry survived:\n%s", got)
+	}
+	if !strings.Contains(got, `"my own task"`) || !strings.Contains(got, "// mine, keep it") {
+		t.Errorf("the user's own entries must survive:\n%s", got)
+	}
+	if strings.Contains(got, `"Review threads"`) {
+		t.Error("an entry we no longer write must not be left behind")
+	}
+}
+
+// Removal must understand strings and comments, or a brace inside either would
+// cut an object in the wrong place.
+func TestRemovalIsNotConfusedByBracesInText(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tasks.json")
+	write(t, path, `[
+  { "label": "mine", "command": "echo '{ not a real brace }'" }, // } neither is this
+  { "label": "Comment on selection", "command": "mdrev" }
+]
+`)
+
+	if err := mergeBlock(path, `{"label": "Comment on selection"}`, "Comment on selection"); err != nil {
+		t.Fatal(err)
+	}
+
+	got := read(t, path)
+	if !strings.Contains(got, `"echo '{ not a real brace }'"`) {
+		t.Errorf("an entry with braces in a string was damaged:\n%s", got)
+	}
+	if n := strings.Count(got, `"Comment on selection"`); n != 1 {
+		t.Errorf("task appears %d times, want 1:\n%s", n, got)
+	}
+}

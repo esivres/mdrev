@@ -17,8 +17,9 @@ const (
 )
 
 // mergeBlock inserts entries into a JSON array file, replacing our previous
-// block if there is one. The file is created when absent.
-func mergeBlock(path, entries string) error {
+// block and any entry an older version left outside it. The file is created
+// when absent.
+func mergeBlock(path, entries string, ours ...string) error {
 	existing, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -26,6 +27,13 @@ func mergeBlock(path, entries string) error {
 
 	block := blockBegin + "\n" + entries + "\n" + blockEnd
 	text := strings.TrimSpace(string(existing))
+
+	if len(ours) > 0 && text != "" {
+		if cleaned, removed := dropStaleEntries(text, ours); removed > 0 {
+			text = strings.TrimSpace(cleaned)
+			fmt.Printf("removed %d entry(s) written by an older mdrev in %s\n", removed, path)
+		}
+	}
 
 	switch {
 	case text == "":
@@ -149,9 +157,97 @@ func boundTo(path, key string) string {
 	return "something"
 }
 
-// staleEntries finds our own entries left outside the managed block by an
-// earlier version, which wrote whole files. Merging beside them would leave the
-// editor with two of each task.
+// dropStaleEntries removes our own entries left outside the managed block by an
+// earlier version, which wrote these files whole. Merging beside them leaves
+// the editor with two of every task, and warning about it is no help: the file
+// is already wrong by the time anyone reads the warning.
+func dropStaleEntries(text string, names []string) (string, int) {
+	body, head, tail := arrayBody(text)
+	if body == "" {
+		return text, 0
+	}
+
+	var kept []string
+	removed := 0
+	for _, entry := range topLevelObjects(body) {
+		if entry.managed || !containsAny(entry.text, names) {
+			kept = append(kept, entry.text)
+			continue
+		}
+		removed++
+	}
+	if removed == 0 {
+		return text, 0
+	}
+	return head + strings.Join(kept, ",\n") + tail, removed
+}
+
+type entry struct {
+	text    string
+	managed bool
+}
+
+// topLevelObjects splits an array body into its elements, keeping whatever sits
+// between them — our block markers, and the user's comments — attached to the
+// element that follows.
+func topLevelObjects(body string) []entry {
+	var out []entry
+	depth, start, inString, escaped, inComment := 0, 0, false, false, false
+	managed := false
+
+	for i, r := range body {
+		switch {
+		case escaped:
+			escaped = false
+		case inString && r == '\\':
+			escaped = true
+		case r == '"':
+			inString = !inString
+		case inString:
+		case inComment:
+			if r == '\n' {
+				inComment = false
+			}
+		case r == '/' && i+1 < len(body) && body[i+1] == '/':
+			inComment = true
+		case r == '{':
+			if depth == 0 {
+				start = i
+				managed = strings.Contains(body[:i], blockBegin) &&
+					!strings.Contains(body[:i], blockEnd)
+			}
+			depth++
+		case r == '}':
+			depth--
+			if depth == 0 {
+				out = append(out, entry{text: strings.TrimSpace(body[start : i+1]), managed: managed})
+			}
+		}
+	}
+	return out
+}
+
+// arrayBody returns what is inside the outermost brackets, and the text around
+// them, so comments before the array survive.
+func arrayBody(text string) (body, head, tail string) {
+	open := strings.Index(text, "[")
+	close := strings.LastIndex(text, "]")
+	if open < 0 || close < open {
+		return "", "", ""
+	}
+	return text[open+1 : close], text[:open+1] + "\n  ", "\n" + text[close:]
+}
+
+func containsAny(text string, names []string) bool {
+	for _, name := range names {
+		if strings.Contains(text, `"`+name+`"`) {
+			return true
+		}
+	}
+	return false
+}
+
+// staleEntries reports which of our entries sit outside the managed block.
 func staleEntries(path string, names []string) []string {
 	data, err := os.ReadFile(path)
 	if err != nil {
