@@ -117,12 +117,7 @@ func (s *Sidecar) save() error {
 	if err := os.Rename(tmp.Name(), target); err != nil {
 		return err
 	}
-	// The rename is durable only once the directory entry is on disk.
-	if d, err := os.Open(dir); err == nil {
-		defer func() { _ = d.Close() }()
-		return d.Sync()
-	}
-	return nil
+	return syncDir(dir)
 }
 
 // The yaml encoder panics on an extra that shadows a modelled field; losing
