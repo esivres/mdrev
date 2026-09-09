@@ -21,7 +21,6 @@ jobs:
           version: "~> v2"
           args: release --clean
         env:
+          # The formula and the scoop manifest are committed back into this
+          # same repository, so the default token is enough.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Publishing the formula and manifest writes to other repositories,
-          # which the default token may not reach.
-          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}

@@ -19,11 +19,20 @@ the document too.
 ## Install
 
 ```sh
-brew install esivres/tap/mdrev          # macOS and Linux
-scoop bucket add esivres https://github.com/esivres/scoop-bucket
-scoop install mdrev                     # Windows
+# macOS and Linux
+brew tap esivres/mdrev https://github.com/esivres/mdrev
+brew install esivres/mdrev/mdrev
+
+# Windows
+scoop bucket add mdrev https://github.com/esivres/mdrev
+scoop install mdrev
+
+# from source
 go install github.com/esivres/mdrev/cmd/mdrev@latest
 ```
+
+The tap and the bucket are this repository — `brew tap` and `scoop bucket add`
+take an explicit URL, so there is no separate `homebrew-*` repository to add.
 
 ## Getting started
 
