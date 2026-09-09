@@ -47,6 +47,11 @@ A reply is a comment with `reply_to` pointing at its parent, and it inherits
 the parent's anchor. Tools that do not understand threading still see valid
 comments.
 
+Replies may point at other replies; mdrev walks each one up to the comment that
+starts the thread and shows them all there. A reply whose parent is missing —
+deleted by another tool, or a broken hand edit — is shown as a thread of its
+own rather than dropped.
+
 ## Suggested edits
 
 MRSF has no field for a proposed replacement, so mdrev stores one in
@@ -74,4 +79,7 @@ added — so a hand-edited sidecar with a broken hash or a dangling reply keeps
 the damage. Use `mdrev comment`, `mdrev reply` and `mdrev threads`.
 
 Keys this tool does not model are preserved: anything else at the top level, or
-inside a comment, survives a load and save unchanged.
+inside a comment, survives a load and save. Their values are kept, not their
+formatting — the file is re-emitted, so ordering, anchors and merge keys are
+normalised. An unknown key that collides with a modelled field (`document`,
+`resolved`, …) is dropped, because the encoder cannot represent both.

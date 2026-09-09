@@ -219,3 +219,44 @@ func TestOutcomeDistinguishesAppliedFromDismissed(t *testing.T) {
 		t.Errorf("--all must show how the thread ended, got %+v", got)
 	}
 }
+
+// A reply to a reply is accepted by the format and written to disk, so it has
+// to be visible: dropping it loses the human's answer while leaving it in the
+// file.
+func TestNestedReplyIsVisible(t *testing.T) {
+	bin, dir := fixture(t)
+	run(t, bin, dir, "comment", "--file", "doc.md", "--line", "1", "--quote", "beta", "--text", "why?")
+	parent := firstID(t, bin, dir)
+	if out, err := run(t, bin, dir, "reply", "--file", "doc.md", "--id", parent[:8], "--text", "first answer"); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+
+	// Reply to the reply, by taking its id out of the thread.
+	out, err := run(t, bin, dir, "list", "doc.md", "--json")
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	var threads []struct {
+		Replies []struct {
+			ID string `json:"id"`
+		} `json:"replies"`
+	}
+	if err := json.Unmarshal([]byte(out), &threads); err != nil {
+		t.Fatal(err)
+	}
+	if len(threads) != 1 || len(threads[0].Replies) != 1 {
+		t.Fatalf("setup did not produce one thread with one reply: %s", out)
+	}
+	nested := threads[0].Replies[0].ID
+	if out, err := run(t, bin, dir, "reply", "--file", "doc.md", "--id", nested[:8], "--text", "follow-up"); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+
+	out, err = run(t, bin, dir, "list", "doc.md", "--json")
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if !strings.Contains(out, "follow-up") {
+		t.Errorf("a reply to a reply must stay visible:\n%s", out)
+	}
+}

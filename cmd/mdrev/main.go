@@ -114,34 +114,30 @@ func printComments(args []string) error {
 		return err
 	}
 
-	open := []mrsf.Comment{}
-	replies := map[string][]mrsf.Comment{}
+	var threads []mrsf.Thread
 	if sc != nil {
-		for _, c := range sc.Comments {
-			switch {
-			case c.ReplyTo != "":
-				replies[c.ReplyTo] = append(replies[c.ReplyTo], c)
-			case !c.Resolved || *all:
-				open = append(open, c)
-			}
-		}
+		threads = sc.Threads(*all)
 	}
 
 	if *asJSON {
 		// An empty slice, not nil: an agent parsing this should get [] rather
 		// than null when a review is clean.
 		out := []jsonComment{}
-		for _, c := range open {
-			out = append(out, toJSON(c, replies[c.ID]))
+		for _, t := range threads {
+			out = append(out, toJSON(t.Parent, t.Replies))
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
 	}
-	for _, c := range open {
+	for _, t := range threads {
+		c := t.Parent
 		fmt.Printf("%s  %s:%d", shortID(c.ID), filepath.Base(document), c.Line)
 		if c.Type != "" {
 			fmt.Printf("  [%s]", c.Type)
+		}
+		if outcome := c.Outcome(); outcome != "" {
+			fmt.Printf("  (%s)", outcome)
 		}
 		fmt.Println()
 		if c.SelectedText != "" {
@@ -151,12 +147,12 @@ func printComments(args []string) error {
 		if s, ok := c.SuggestedText(); ok {
 			fmt.Printf("    -> %s\n", s)
 		}
-		for _, r := range replies[c.ID] {
+		for _, r := range t.Replies {
 			printBody(r, "    | ", "        ")
 		}
 		fmt.Println()
 	}
-	if len(open) == 0 {
+	if len(threads) == 0 {
 		fmt.Println("No open comments.")
 	}
 	return nil

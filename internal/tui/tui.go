@@ -109,25 +109,18 @@ func (m *model) reload() error {
 	}
 	m.threads = nil
 	if sc == nil {
+		m.cursor = 0
 		return nil
 	}
 
-	byID := map[string]int{}
-	for _, c := range sc.Comments {
-		if c.ReplyTo != "" {
-			continue
-		}
-		if c.Resolved && !m.showAll {
-			continue
-		}
-		byID[c.ID] = len(m.threads)
-		m.threads = append(m.threads, thread{parent: c, line: m.currentLine(c)})
+	for _, t := range sc.Threads(m.showAll) {
+		m.threads = append(m.threads, thread{
+			parent:  t.Parent,
+			replies: t.Replies,
+			line:    m.currentLine(t.Parent),
+		})
 	}
-	for _, c := range sc.Comments {
-		if i, ok := byID[c.ReplyTo]; ok {
-			m.threads[i].replies = append(m.threads[i].replies, c)
-		}
-	}
+
 	for i, t := range m.threads {
 		if t.parent.ID == selected {
 			m.cursor = i
@@ -438,6 +431,10 @@ func (m *model) openInEditor() tea.Cmd {
 		return nil
 	}
 	parts := strings.Fields(editor)
+	if len(parts) == 0 {
+		m.status = "set $EDITOR to open the document"
+		return nil
+	}
 	target := fmt.Sprintf("%s:%d", m.document, m.threads[m.cursor].line)
 	cmd := exec.Command(parts[0], append(parts[1:], target)...)
 	return tea.ExecProcess(cmd, func(error) tea.Msg { return nil })

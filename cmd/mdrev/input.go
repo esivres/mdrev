@@ -51,6 +51,9 @@ func readFromEditor(quote string, line int) (string, error) {
 
 	// The editor command may carry flags, e.g. EDITOR="zed --wait".
 	parts := strings.Fields(editor)
+	if len(parts) == 0 {
+		return "", fmt.Errorf("$VISUAL and $EDITOR are empty")
+	}
 	cmd := exec.Command(parts[0], append(parts[1:], path)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {

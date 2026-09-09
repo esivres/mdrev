@@ -144,3 +144,67 @@ func TestSaveKeepsFilePermissions(t *testing.T) {
 		}
 	}
 }
+
+// A sidecar kept behind a symlink — a shared review store, a dotfiles setup —
+// must keep working: replacing the link with a regular file would fork the
+// data and quietly strand every later comment.
+func TestSaveWritesThroughASymlink(t *testing.T) {
+	dir := t.TempDir()
+	doc := filepath.Join(dir, "doc.md")
+	store := filepath.Join(dir, "store.yaml")
+	if err := os.WriteFile(store, []byte(foreign), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(store, Path(doc)); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	sc, err := Load(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sc.Add(Comment{Text: "added", SelectedText: "claim"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sc.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Lstat(Path(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("the symlink was replaced by a regular file")
+	}
+	target, err := os.ReadFile(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(target), "added") {
+		t.Error("the new comment did not reach the file the link points at")
+	}
+}
+
+// An unknown key that collides with a modelled field panics the encoder, and a
+// panic on the write path would take the whole review with it.
+func TestCollidingExtraKeyDoesNotPanic(t *testing.T) {
+	dir := t.TempDir()
+	doc := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(Path(doc), []byte(foreign), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sc, err := Load(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc.Extra = map[string]any{"document": "collision"}
+	sc.Comments[0].Extra = map[string]any{"resolved": "collision"}
+
+	if err := sc.Save(); err != nil {
+		t.Fatalf("save must not fail on a colliding key: %v", err)
+	}
+	if _, err := Load(doc); err != nil {
+		t.Errorf("the sidecar must still load: %v", err)
+	}
+}

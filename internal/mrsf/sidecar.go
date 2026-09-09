@@ -79,6 +79,8 @@ func Load(document string) (*Sidecar, error) {
 // discussion, and a half-written file can still parse as valid YAML with
 // comments missing — which the next save would make permanent.
 func (s *Sidecar) Save() error {
+	s.dropShadowedKeys()
+
 	var buf strings.Builder
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
@@ -89,7 +91,14 @@ func (s *Sidecar) Save() error {
 		return err
 	}
 
-	dir := filepath.Dir(s.path)
+	// Replacing by rename would turn a symlinked sidecar into a regular file
+	// and orphan whatever it pointed at, so write through the link.
+	target := s.path
+	if resolved, err := filepath.EvalSymlinks(target); err == nil {
+		target = resolved
+	}
+
+	dir := filepath.Dir(target)
 	tmp, err := os.CreateTemp(dir, ".mrsf-*.yaml")
 	if err != nil {
 		return err
@@ -110,7 +119,33 @@ func (s *Sidecar) Save() error {
 	if err := os.Chmod(tmp.Name(), s.perm()); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), s.path)
+	if err := os.Rename(tmp.Name(), target); err != nil {
+		return err
+	}
+	// The rename itself is only durable once the directory entry is on disk.
+	if d, err := os.Open(dir); err == nil {
+		defer d.Close()
+		return d.Sync()
+	}
+	return nil
+}
+
+// dropShadowedKeys removes extras that collide with a modelled field. The yaml
+// encoder panics on such a key, and losing an unknown duplicate is a far better
+// outcome than losing the whole review to a panic on the write path.
+func (s *Sidecar) dropShadowedKeys() {
+	delete(s.Extra, "mrsf_version")
+	delete(s.Extra, "document")
+	delete(s.Extra, "comments")
+	for i := range s.Comments {
+		for _, key := range []string{
+			"id", "author", "timestamp", "text", "resolved", "line", "end_line",
+			"start_column", "end_column", "type", "severity", "selected_text",
+			"selected_text_hash", "reply_to",
+		} {
+			delete(s.Comments[i].Extra, key)
+		}
+	}
 }
 
 // perm keeps whatever mode the sidecar already had: replacing the file must not

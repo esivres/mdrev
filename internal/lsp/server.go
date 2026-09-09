@@ -328,21 +328,10 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 		return draftDiagnostics(newLineIndex(text))
 	}
 
-	// Replies share their parent's anchor, so they belong inside the parent's
-	// message rather than as diagnostics of their own.
-	replies := map[string][]mrsf.Comment{}
-	for _, c := range sc.Comments {
-		if c.ReplyTo != "" {
-			replies[c.ReplyTo] = append(replies[c.ReplyTo], c)
-		}
-	}
-
 	li := newLineIndex(text)
 	out := draftDiagnostics(li)
-	for _, c := range sc.Comments {
-		if c.Resolved || c.ReplyTo != "" {
-			continue
-		}
+	for _, t := range sc.Threads(false) {
+		c := t.Parent
 		rng, anchored := locate(li, c)
 		author := c.Author
 		if author == "" {
@@ -352,7 +341,7 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 		if suggested, ok := c.SuggestedText(); ok {
 			msg += "\n→ " + suggested
 		}
-		for _, r := range replies[c.ID] {
+		for _, r := range t.Replies {
 			msg += "\n\n" + r.Author + ": " + r.Text
 		}
 		if !anchored && (c.SelectedText != "" || !li.hasLine(c.Line)) {
@@ -456,10 +445,8 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 	if err != nil || sc == nil {
 		return actions
 	}
-	for _, c := range sc.Comments {
-		if c.Resolved || c.ReplyTo != "" {
-			continue
-		}
+	for _, t := range sc.Threads(false) {
+		c := t.Parent
 		rng, anchored := locate(li, c)
 		if !overlaps(rng, p.Range) {
 			continue
