@@ -178,3 +178,42 @@ func TestUnappliedSuggestionStaysOpen(t *testing.T) {
 		t.Error("thread must stay open while the original fragment is in the document")
 	}
 }
+
+// Resolving a thread nobody closed hides live review, and suggested wordings
+// are short enough to turn up in unrelated prose, so the deciding fact is that
+// the original fragment is gone — not that the replacement appears somewhere.
+func TestUnrelatedOccurrenceDoesNotResolve(t *testing.T) {
+	text := "one\ntwo\nthe quick brown fox\nfour\nfive\nsix\nseven\nrunning не превышает 2 here\n"
+	c := mrsf.Comment{
+		Line: 3, SelectedText: "не превышает 2",
+		Extra: map[string]any{mrsf.SuggestedTextKey: "quick"},
+	}
+	if suggestionApplied(strings.Split(text, "\n"), &c) {
+		t.Error("an unrelated occurrence of the suggested word must not resolve the thread")
+	}
+}
+
+// While the original wording is still in the document the suggestion is merely
+// proposed, even if the replacement text also appears somewhere nearby.
+func TestOriginalStillPresentKeepsThreadOpen(t *testing.T) {
+	text := "intro\nне превышает 2 stays here\nи рядом не превышает 1 в примере\n"
+	c := mrsf.Comment{
+		Line: 2, SelectedText: "не превышает 2",
+		Extra: map[string]any{mrsf.SuggestedTextKey: "не превышает 1"},
+	}
+	if suggestionApplied(strings.Split(text, "\n"), &c) {
+		t.Error("thread must stay open while the original fragment sits at the anchor")
+	}
+}
+
+// A multi-line fragment can never be found by a line-wise search, which would
+// otherwise make every such comment look applied and close it.
+func TestMultiLineFragmentIsNeverAutoResolved(t *testing.T) {
+	c := mrsf.Comment{
+		Line: 1, SelectedText: "first\nsecond",
+		Extra: map[string]any{mrsf.SuggestedTextKey: "replacement"},
+	}
+	if suggestionApplied([]string{"replacement"}, &c) {
+		t.Error("a multi-line anchor must not be auto-resolved")
+	}
+}

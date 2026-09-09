@@ -21,13 +21,14 @@ one. An existing `AGENTS.md` is appended to, and never duplicated.
 2. You read it in the editor and comment — `Alt+C` on a selection, or a
    `{>>marker<<}` typed into the text, or `n` in `mdrev threads`.
 3. The agent runs `mdrev list doc.md --json`, sees what is open, and answers in
-   the thread with `mdrev reply`.
+   the thread with `mdrev reply`. The JSON uses the sidecar's field names and
+   nests each thread's `replies`, so the human's answers are in there too.
 4. Where the answer is a change to the text, the agent proposes it rather than
    making it:
 
 ```sh
 mdrev comment --file doc.md --type suggestion \
-  --quote "the exact fragment" --suggest "the replacement" \
+  --quote "the exact fragment" --line 42 --suggest "the replacement" \
   --author Claude --text "why this is better"
 ```
 

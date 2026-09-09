@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"golang.org/x/term"
@@ -147,7 +148,7 @@ func setUpAgentDocs(choice string) error {
 	}
 
 	switch choice {
-	case "", "none":
+	case "none":
 		return nil
 	case "agents":
 		return agentdocs.AppendToAgentsFile("AGENTS.md")
@@ -189,18 +190,24 @@ func chooseKeys(flagValue string) (comment, question string, err error) {
 	if !in.Scan() {
 		return splitKeys(keyPresets[0])
 	}
-	switch choice := strings.TrimSpace(in.Text()); choice {
-	case "":
+	choice := strings.TrimSpace(in.Text())
+	if choice == "" {
 		return splitKeys(keyPresets[0])
-	case "1", "2", "3":
-		return splitKeys(keyPresets[int(choice[0]-'1')])
-	case "4":
+	}
+	n, err := strconv.Atoi(choice)
+	if err != nil {
+		return "", "", fmt.Errorf("unknown choice %q", choice)
+	}
+	switch {
+	case n >= 1 && n <= len(keyPresets):
+		return splitKeys(keyPresets[n-1])
+	case n == len(keyPresets)+1:
 		fmt.Print("Shortcut (Zed syntax, e.g. ctrl-alt-k): ")
 		if !in.Scan() {
 			return "", "", fmt.Errorf("no shortcut given")
 		}
 		return splitKeys(strings.TrimSpace(in.Text()))
-	case "5":
+	case n == len(keyPresets)+2:
 		return "", "", nil
 	default:
 		return "", "", fmt.Errorf("unknown choice %q", choice)
@@ -217,6 +224,11 @@ func splitKeys(value string) (comment, question string, err error) {
 	}
 	if len(parts) > 1 {
 		return comment, strings.TrimSpace(parts[1]), nil
+	}
+	if !strings.Contains(comment, "-") {
+		// The other shortcuts are derived by swapping the final key, which for
+		// a bare key would produce bare letters and shadow vim motions.
+		return "", "", fmt.Errorf("shortcut %q has no modifier; use something like alt-c", comment)
 	}
 	return comment, shiftVariant(comment), nil
 }

@@ -6,6 +6,7 @@ package mrsf
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -42,6 +43,9 @@ type Sidecar struct {
 	Version  string    `yaml:"mrsf_version"`
 	Document string    `yaml:"document"`
 	Comments []Comment `yaml:"comments"`
+	// Extra keeps top-level keys other tools wrote. Without it every save
+	// through this package would quietly delete their metadata.
+	Extra map[string]any `yaml:",inline"`
 
 	path string
 }
@@ -71,6 +75,9 @@ func Load(document string) (*Sidecar, error) {
 	return &s, nil
 }
 
+// Save writes the sidecar atomically. A review is the only copy of a
+// discussion, and a half-written file can still parse as valid YAML with
+// comments missing — which the next save would make permanent.
 func (s *Sidecar) Save() error {
 	var buf strings.Builder
 	enc := yaml.NewEncoder(&buf)
@@ -81,7 +88,29 @@ func (s *Sidecar) Save() error {
 	if err := enc.Close(); err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, []byte(buf.String()), 0o644)
+
+	dir := filepath.Dir(s.path)
+	tmp, err := os.CreateTemp(dir, ".mrsf-*.yaml")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+
+	if _, err := tmp.WriteString(buf.String()); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), s.path)
 }
 
 func (s *Sidecar) Find(id string) *Comment {

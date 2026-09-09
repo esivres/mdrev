@@ -80,3 +80,34 @@ func TestActionsMatchAnEmptyCursorRange(t *testing.T) {
 		t.Error("a cursor on another line must not match")
 	}
 }
+
+// A stray opener must not pair with a closer further down the file: the code
+// action deletes whatever the marker covers, so a mistyped "{>>" would erase
+// the paragraphs between it and the next real comment.
+func TestStrayOpenerDoesNotSwallowTheDocument(t *testing.T) {
+	drafts := findDrafts("{>>stray\n\nA paragraph of prose. {>>real remark<<}\n")
+
+	if len(drafts) != 1 {
+		t.Fatalf("want only the terminated marker, got %d: %+v", len(drafts), drafts)
+	}
+	if drafts[0].Text != "real remark" {
+		t.Errorf("wrong draft matched: %q", drafts[0].Text)
+	}
+}
+
+// A marker inside another marker would otherwise close on the inner tag and
+// leave the outer tail behind as stray markup.
+func TestNestedMarkersAreNotFiled(t *testing.T) {
+	if got := findDrafts("{>>outer {>>inner<<} tail<<}"); len(got) != 1 || got[0].Text != "inner" {
+		t.Errorf("want only the inner marker, got %+v", got)
+	}
+}
+
+// Multi-line comments stay supported: the restriction is a blank line, not a
+// newline.
+func TestDraftMaySpanLines(t *testing.T) {
+	got := findDrafts("Some prose. {>>first line\nsecond line<<}\n")
+	if len(got) != 1 || got[0].Text != "first line\nsecond line" {
+		t.Errorf("multi-line draft must be kept, got %+v", got)
+	}
+}

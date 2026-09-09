@@ -62,13 +62,15 @@ CriticMarkup:
 Latency p99 must not exceed 200 ms per request. {>>too optimistic<<}
 ```
 
-The marker is highlighted as an unfiled comment; the code action on it (`Alt+Enter`
-in most keymaps) files it into the sidecar and removes it from the document,
-anchored to the words in front of it. This needs no shortcuts and no
+The marker is highlighted as an unfiled comment; the code action on it
+(`ctrl-.` in Zed's default keymap, `Alt+Enter` with the JetBrains one) files it
+into the sidecar and removes it from the document, anchored to the words in
+front of it. This needs no shortcuts and no
 configuration, and works in any editor with an LSP client.
 
 Filed comments are underlined in the document; hovering shows the thread, and
-the code action menu offers "Apply suggestion" and "Dismiss / mark resolved".
+the code action menu offers "Apply suggestion" and "Keep the current wording"
+on a proposed edit, or "Resolve comment" on a plain remark.
 
 If you would rather select text and press a key, `mdrev setup` also installs
 Zed tasks bound to a shortcut of your choice.

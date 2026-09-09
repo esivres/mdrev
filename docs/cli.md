@@ -66,8 +66,10 @@ Replies in a thread. A reply inherits its parent's anchor.
 
 ## mdrev list
 
-Prints open threads with their replies. `--json` gives an agent the raw
-comments, without the reply nesting.
+Prints open threads with their replies. `--json` gives an agent the same
+threads with each one's `replies` nested inside, using the field names of the
+sidecar (`id`, `selected_text`, `x_suggested_text`), and prints `[]` when the
+review is clean.
 
 ```sh
 mdrev list spec.md
@@ -99,6 +101,7 @@ fragment highlighted inside it.
 
 ## mdrev lsp
 
-Runs the language server on stdio. Editors start it; you never run it by hand.
+Runs the language server on stdio. Editors start it; you never run it by hand,
+and it takes no flags.
 It traces to `$TMPDIR/mdrev-lsp.log`, which is the first place to look when the
 editor shows nothing.

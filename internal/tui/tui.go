@@ -93,6 +93,13 @@ func newEditor() textarea.Model {
 }
 
 func (m *model) reload() error {
+	// The cursor is an index, but the reader is looking at a thread: without
+	// this, resolving one silently moves the selection onto its neighbour.
+	var selected string
+	if m.cursor < len(m.threads) {
+		selected = m.threads[m.cursor].parent.ID
+	}
+
 	if data, err := os.ReadFile(m.document); err == nil {
 		m.docText = string(data)
 	}
@@ -119,6 +126,11 @@ func (m *model) reload() error {
 	for _, c := range sc.Comments {
 		if i, ok := byID[c.ReplyTo]; ok {
 			m.threads[i].replies = append(m.threads[i].replies, c)
+		}
+	}
+	for i, t := range m.threads {
+		if t.parent.ID == selected {
+			m.cursor = i
 		}
 	}
 	if m.cursor >= len(m.threads) {
@@ -192,31 +204,6 @@ func paragraphAt(text string, line int, quote string) string {
 	return strings.Join(lines[first:last+1], "\n")
 }
 
-// nearestLineWith prefers an occurrence of the quote over the recorded line,
-// which goes stale as soon as the document is edited above it.
-func nearestLineWith(lines []string, quote string, fallback int) int {
-	if quote == "" {
-		return fallback
-	}
-	best, bestDist := -1, 1<<30
-	for i, l := range lines {
-		if !strings.Contains(l, quote) {
-			continue
-		}
-		d := i - fallback
-		if d < 0 {
-			d = -d
-		}
-		if d < bestDist {
-			best, bestDist = i, d
-		}
-	}
-	if best < 0 {
-		return fallback
-	}
-	return best
-}
-
 func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -229,8 +216,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if m.mode == replying {
-			return m.updateReplying(msg)
+		if m.mode != browsing {
+			return m.updateComposing(msg)
 		}
 		return m.updateBrowsing(msg)
 	}
@@ -290,7 +277,8 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, textarea.Blink
 
 	case "x":
-		return m, m.toggleResolved()
+		cmd := m.toggleResolved()
+		return m, cmd
 
 	case "a":
 		m.showAll = !m.showAll
@@ -301,7 +289,8 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.body.SetContent(m.threadView())
 
 	case "o":
-		return m, m.openInEditor()
+		cmd := m.openInEditor()
+		return m, cmd
 
 	default:
 		var cmd tea.Cmd
@@ -311,7 +300,9 @@ func (m model) updateBrowsing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) updateReplying(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// updateComposing handles both writing a new comment and replying: the keys
+// are the same, only the destination differs.
+func (m model) updateComposing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.mode = browsing
@@ -361,9 +352,17 @@ func (m *model) saveReply(text string) error {
 	if err != nil {
 		return err
 	}
+	if sc == nil {
+		return fmt.Errorf("the review file is gone")
+	}
 	parent := m.threads[m.cursor].parent
+	// The sidecar may have been rewritten since it was loaded, so make sure the
+	// parent is still there rather than writing a reply nothing can display.
+	if sc.Find(parent.ID) == nil {
+		return fmt.Errorf("that thread is no longer in the review")
+	}
 	if _, err := sc.Add(mrsf.Comment{
-		Author:       author(),
+		Author:       mrsf.DefaultAuthor(),
 		Text:         text,
 		Line:         parent.Line,
 		SelectedText: parent.SelectedText,
@@ -381,7 +380,7 @@ func (m *model) saveComment(text string) error {
 		return err
 	}
 	added, err := sc.Add(mrsf.Comment{
-		Author:       author(),
+		Author:       mrsf.DefaultAuthor(),
 		Text:         text,
 		Line:         m.line,
 		SelectedText: m.lineQuote(),
@@ -405,8 +404,13 @@ func (m *model) toggleResolved() tea.Cmd {
 		m.status = err.Error()
 		return nil
 	}
+	if sc == nil {
+		m.status = "the review file is gone"
+		return nil
+	}
 	c := sc.Find(m.threads[m.cursor].parent.ID)
 	if c == nil {
+		m.status = "that thread is no longer in the review"
 		return nil
 	}
 	c.Resolved = !c.Resolved
@@ -473,8 +477,6 @@ func (m model) View() string {
 	return header + m.scrollHint() + "\n" + panes + "\n" + footer
 }
 
-// scrollHint tells the reader that a thread continues past the pane, which is
-// otherwise invisible and makes long discussions look truncated.
 func (m model) resolvedHelp() string {
 	if m.showAll {
 		return "a hide resolved"
@@ -482,6 +484,8 @@ func (m model) resolvedHelp() string {
 	return "a show resolved"
 }
 
+// scrollHint tells the reader that a thread continues past the pane, which is
+// otherwise invisible and makes long discussions look truncated.
 func (m model) scrollHint() string {
 	if m.mode != browsing || m.body.AtBottom() && m.body.AtTop() {
 		return ""
@@ -585,14 +589,4 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(r[:n-1]) + "…"
-}
-
-func author() string {
-	out, err := exec.Command("git", "config", "user.name").Output()
-	if err == nil {
-		if name := strings.TrimSpace(string(out)); name != "" {
-			return name
-		}
-	}
-	return os.Getenv("USER")
 }

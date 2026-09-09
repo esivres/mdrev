@@ -19,8 +19,12 @@ func replyToComment(args []string) error {
 	author := fs.String("author", "", "reply author")
 	useEditor := fs.Bool("editor", false, "compose the reply in $EDITOR instead of stdin")
 	resolve := fs.Bool("resolve", false, "mark the thread resolved after replying")
-	if err := fs.Parse(args); err != nil {
+	rest, err := parseFlags(fs, args)
+	if err != nil {
 		return err
+	}
+	if len(rest) > 0 {
+		return fmt.Errorf("unexpected argument %q; the document is given with --file", rest[0])
 	}
 	if *file == "" || *id == "" {
 		return fmt.Errorf("--file and --id are required")
@@ -49,8 +53,13 @@ func replyToComment(args []string) error {
 		return fmt.Errorf("reply text is empty")
 	}
 
+	// Resolve before adding: Add appends, which may move the backing array and
+	// leave the parent pointer aiming at the old one.
+	if *resolve {
+		parent.Resolved = true
+	}
 	reply, err := sidecar.Add(mrsf.Comment{
-		Author:       cmp(*author, gitUserName()),
+		Author:       firstNonEmpty(*author, mrsf.DefaultAuthor()),
 		Text:         *text,
 		Line:         parent.Line,
 		SelectedText: parent.SelectedText,
@@ -58,9 +67,6 @@ func replyToComment(args []string) error {
 	})
 	if err != nil {
 		return err
-	}
-	if *resolve {
-		parent.Resolved = true
 	}
 	if err := sidecar.Save(); err != nil {
 		return err

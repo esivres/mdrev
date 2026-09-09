@@ -68,6 +68,10 @@ it, while removing it from the document. Nothing stays behind.
 
 ## Editing by hand
 
-Don't. The anchor hash and the thread links are maintained by the commands,
-and a hand-edited sidecar can silently lose comments on the next re-anchor.
-Use `mdrev comment`, `mdrev reply` and `mdrev threads`.
+Don't. The anchor hash and the `reply_to` links are maintained by the commands,
+and the file is rewritten in full whenever a thread is resolved or a comment is
+added — so a hand-edited sidecar with a broken hash or a dangling reply keeps
+the damage. Use `mdrev comment`, `mdrev reply` and `mdrev threads`.
+
+Keys this tool does not model are preserved: anything else at the top level, or
+inside a comment, survives a load and save unchanged.

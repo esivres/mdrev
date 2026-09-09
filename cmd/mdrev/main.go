@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -45,6 +44,11 @@ func main() {
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	case "lsp":
+		if len(os.Args) > 2 {
+			fmt.Fprintln(os.Stderr, "mdrev lsp speaks the language server protocol on stdio; editors start it")
+			os.Exit(2)
+		}
+		lsp.Version = version
 		err = lsp.NewServer(os.Stdout).Run(os.Stdin)
 	case "setup":
 		err = setUpEditor(os.Args[2:])
@@ -92,6 +96,9 @@ func printComments(args []string) error {
 		return fmt.Errorf("usage: mdrev list <file.md> [--json]")
 	}
 	document := rest[0]
+	if err := requireDocument(document); err != nil {
+		return err
+	}
 	sc, err := mrsf.Load(document)
 	if err != nil {
 		return err
@@ -111,9 +118,15 @@ func printComments(args []string) error {
 	}
 
 	if *asJSON {
+		// An empty slice, not nil: an agent parsing this should get [] rather
+		// than null when a review is clean.
+		out := []jsonComment{}
+		for _, c := range open {
+			out = append(out, toJSON(c, replies[c.ID]))
+		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(open)
+		return enc.Encode(out)
 	}
 	for _, c := range open {
 		fmt.Printf("%s  %s:%d", shortID(c.ID), filepath.Base(document), c.Line)
@@ -164,11 +177,18 @@ func addComment(args []string) error {
 	severity := fs.String("severity", "", "low | medium | high")
 	suggest := fs.String("suggest", "", "replacement text offered as a fix")
 	useEditor := fs.Bool("editor", false, "compose the comment in $EDITOR instead of stdin")
-	if err := fs.Parse(args); err != nil {
+	rest, err := parseFlags(fs, args)
+	if err != nil {
 		return err
+	}
+	if len(rest) > 0 {
+		return fmt.Errorf("unexpected argument %q; the document is given with --file", rest[0])
 	}
 	if *file == "" {
 		return fmt.Errorf("--file is required")
+	}
+	if err := requireDocument(*file); err != nil {
+		return err
 	}
 
 	// Zed hands multi-line selections through verbatim; the first line is
@@ -191,7 +211,7 @@ func addComment(args []string) error {
 		return err
 	}
 	c := mrsf.Comment{
-		Author:       cmp(*author, gitUserName()),
+		Author:       firstNonEmpty(*author, mrsf.DefaultAuthor()),
 		Text:         *text,
 		Line:         *line,
 		SelectedText: *quote,
@@ -212,27 +232,23 @@ func addComment(args []string) error {
 	return nil
 }
 
+// requireDocument turns a typo into an error. Without it a misspelled path is
+// indistinguishable from a document with nothing to review, and a comment can
+// be filed against a file that does not exist.
+func requireDocument(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s is a directory", path)
+	}
+	return nil
+}
+
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		return s[:i]
 	}
 	return s
-}
-
-func cmp(preferred, fallback string) string {
-	if preferred != "" {
-		return preferred
-	}
-	return fallback
-}
-
-func gitUserName() string {
-	out, err := exec.Command("git", "config", "user.name").Output()
-	if err != nil {
-		return os.Getenv("USER")
-	}
-	if name := strings.TrimSpace(string(out)); name != "" {
-		return name
-	}
-	return os.Getenv("USER")
 }

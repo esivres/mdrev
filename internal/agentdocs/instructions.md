@@ -11,6 +11,10 @@ mdrev list doc.md            # open threads, human-readable
 mdrev list doc.md --json     # the same for a program
 ```
 
+The JSON is an array of threads using the sidecar's own field names — `id`,
+`text`, `selected_text`, `line`, `x_suggested_text` — each with its `replies`
+nested inside. That is where the human's answer to your question appears.
+
 Check this after you hand a document over, and again whenever you are asked
 what the review says. An unanswered comment is work you still owe.
 
@@ -31,10 +35,13 @@ change, or you both agreed nothing is needed.
 
 ```sh
 mdrev comment --file doc.md --type suggestion \
-  --quote "the exact fragment being replaced" \
+  --quote "the exact fragment being replaced" --line 42 \
   --suggest "the replacement text" \
   --author Claude --text "why this is better"
 ```
+
+Always pass `--line`: the quote is what the comment follows, the line is what
+tells two identical fragments apart.
 
 The human then applies or dismisses it from the editor in one action. Prefer
 this over rewriting the document yourself: a suggestion is reviewable, a silent
@@ -43,8 +50,8 @@ edit is not.
 ## Commenting without proposing an edit
 
 ```sh
-mdrev comment --file doc.md --quote "fragment" --type issue --severity high \
-  --author Claude --text "..."
+mdrev comment --file doc.md --quote "fragment" --line 42 \
+  --type issue --severity high --author Claude --text "..."
 ```
 
 Use `--type issue` for something wrong, `--type question` when you need the

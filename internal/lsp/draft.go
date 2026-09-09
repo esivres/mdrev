@@ -30,11 +30,13 @@ func findDrafts(text string) []draft {
 			return out
 		}
 		start := off + i
-		j := strings.Index(text[start:], draftClose)
-		if j < 0 {
-			return out
+		end, ok := draftEnd(text, start)
+		if !ok {
+			// An unterminated marker must not swallow the rest of the file: its
+			// code action deletes the range it covers.
+			off = start + len(draftOpen)
+			continue
 		}
-		end := start + j + len(draftClose)
 
 		body := strings.TrimSpace(text[start+len(draftOpen) : end-len(draftClose)])
 		if body != "" {
@@ -47,6 +49,23 @@ func findDrafts(text string) []draft {
 		}
 		off = end
 	}
+}
+
+// draftEnd finds the marker's closing tag. A comment may span lines, but not a
+// blank line and not another marker: past either, the opener was a stray one
+// and pairing it with a distant closer would put unrelated prose inside the
+// comment — and delete it from the document when the comment is filed.
+func draftEnd(text string, start int) (int, bool) {
+	rest := text[start+len(draftOpen):]
+	closing := strings.Index(rest, draftClose)
+	if closing < 0 {
+		return 0, false
+	}
+	body := rest[:closing]
+	if strings.Contains(body, "\n\n") || strings.Contains(body, draftOpen) {
+		return 0, false
+	}
+	return start + len(draftOpen) + closing + len(draftClose), true
 }
 
 // anchorFor quotes the words just before the marker, which is where a reader
