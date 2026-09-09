@@ -34,33 +34,29 @@ func resolveComment(args []string) error {
 		return err
 	}
 
-	sidecar, err := mrsf.Load(*file)
-	if err != nil {
-		return err
-	}
-	if sidecar == nil {
-		return fmt.Errorf("%s has no review sidecar", *file)
-	}
-	c, err := findByPrefix(sidecar, *id)
-	if err != nil {
-		return err
-	}
-
-	if *reopen {
-		c.Resolved = false
-		c.SetOutcome("")
-	} else {
-		c.Resolved = true
-		outcome := mrsf.OutcomeResolved
-		if *dismiss {
-			outcome = mrsf.OutcomeDismissed
+	var closed *mrsf.Comment
+	if err := mrsf.Update(*file, func(sc *mrsf.Sidecar) error {
+		c, err := findByPrefix(sc, *id)
+		if err != nil {
+			return err
 		}
-		c.SetOutcome(outcome)
-	}
-	if err := sidecar.Save(); err != nil {
+		if *reopen {
+			c.Resolved = false
+			c.SetOutcome("")
+		} else {
+			c.Resolved = true
+			outcome := mrsf.OutcomeResolved
+			if *dismiss {
+				outcome = mrsf.OutcomeDismissed
+			}
+			c.SetOutcome(outcome)
+		}
+		closed = c
+		return nil
+	}); err != nil {
 		return err
 	}
-	fmt.Printf("%s %s\n", map[bool]string{true: "Reopened", false: "Closed"}[*reopen], shortID(c.ID))
+	fmt.Printf("%s %s\n", map[bool]string{true: "Reopened", false: "Closed"}[*reopen], shortID(closed.ID))
 	return nil
 }
 
@@ -85,48 +81,48 @@ func applySuggestion(args []string) error {
 		return err
 	}
 
-	sidecar, err := mrsf.Load(*file)
-	if err != nil {
-		return err
-	}
-	if sidecar == nil {
-		return fmt.Errorf("%s has no review sidecar", *file)
-	}
-	c, err := findByPrefix(sidecar, *id)
-	if err != nil {
-		return err
-	}
-	suggested, ok := c.SuggestedText()
-	if !ok {
-		return fmt.Errorf("comment %s proposes no replacement", shortID(c.ID))
-	}
-	if c.SelectedText == "" {
-		return fmt.Errorf("comment %s has no anchored text to replace", shortID(c.ID))
-	}
+	var applied *mrsf.Comment
+	var at int
+	// The document and the review change together, so both happen under the
+	// same lock: a crash between them would leave a suggestion applied but
+	// still open, or closed but not applied.
+	if err := mrsf.Update(*file, func(sc *mrsf.Sidecar) error {
+		c, err := findByPrefix(sc, *id)
+		if err != nil {
+			return err
+		}
+		suggested, ok := c.SuggestedText()
+		if !ok {
+			return fmt.Errorf("comment %s proposes no replacement", shortID(c.ID))
+		}
+		if c.SelectedText == "" {
+			return fmt.Errorf("comment %s has no anchored text to replace", shortID(c.ID))
+		}
 
-	data, err := os.ReadFile(*file)
-	if err != nil {
-		return err
-	}
-	lines := strings.Split(string(data), "\n")
-	if !anchor.Found(lines, c.SelectedText) {
-		return fmt.Errorf("the text %q is no longer in %s", c.SelectedText, *file)
-	}
-	// Replace the occurrence nearest the comment: the fragment may well appear
-	// elsewhere, and rewriting the wrong one would be silent damage.
-	at := anchor.NearestLine(lines, c.SelectedText, c.Line-1)
-	lines[at] = strings.Replace(lines[at], c.SelectedText, suggested, 1)
+		data, err := os.ReadFile(*file)
+		if err != nil {
+			return err
+		}
+		lines := strings.Split(string(data), "\n")
+		if !anchor.Found(lines, c.SelectedText) {
+			return fmt.Errorf("the text %q is no longer in %s", c.SelectedText, *file)
+		}
+		// Replace the occurrence nearest the comment: the fragment may well
+		// appear elsewhere, and rewriting the wrong one would be silent damage.
+		at = anchor.NearestLine(lines, c.SelectedText, c.Line-1)
+		lines[at] = strings.Replace(lines[at], c.SelectedText, suggested, 1)
 
-	// This is the user's document, so it is replaced whole or not at all.
-	if err := writeFileAtomically(*file, []byte(strings.Join(lines, "\n"))); err != nil {
+		if err := writeFileAtomically(*file, []byte(strings.Join(lines, "\n"))); err != nil {
+			return err
+		}
+		c.Resolved = true
+		c.SetOutcome(mrsf.OutcomeApplied)
+		applied = c
+		return nil
+	}); err != nil {
 		return err
 	}
-	c.Resolved = true
-	c.SetOutcome(mrsf.OutcomeApplied)
-	if err := sidecar.Save(); err != nil {
-		return err
-	}
-	fmt.Printf("Applied %s at %s:%d\n", shortID(c.ID), *file, at+1)
+	fmt.Printf("Applied %s at %s:%d\n", shortID(applied.ID), *file, at+1)
 	return nil
 }
 

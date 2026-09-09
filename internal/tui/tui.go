@@ -341,77 +341,68 @@ func (m model) updateComposing(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) saveReply(text string) error {
-	sc, err := mrsf.Load(m.document)
-	if err != nil {
-		return err
-	}
-	if sc == nil {
-		return fmt.Errorf("the review file is gone")
-	}
 	parent := m.threads[m.cursor].parent
-	// The sidecar may have been rewritten since it was loaded, so make sure the
-	// parent is still there rather than writing a reply nothing can display.
-	if sc.Find(parent.ID) == nil {
-		return fmt.Errorf("that thread is no longer in the review")
-	}
-	if _, err := sc.Add(mrsf.Comment{
-		Author:       mrsf.DefaultAuthor(),
-		Text:         text,
-		Line:         parent.Line,
-		SelectedText: parent.SelectedText,
-		ReplyTo:      parent.ID,
-	}); err != nil {
+	return mrsf.Update(m.document, func(sc *mrsf.Sidecar) error {
+		// The sidecar may have been rewritten since it was loaded, so make sure
+		// the parent is still there rather than writing a reply nothing can
+		// display.
+		if sc.Find(parent.ID) == nil {
+			return fmt.Errorf("that thread is no longer in the review")
+		}
+		_, err := sc.Add(mrsf.Comment{
+			Author:       mrsf.DefaultAuthor(),
+			Text:         text,
+			Line:         parent.Line,
+			SelectedText: parent.SelectedText,
+			ReplyTo:      parent.ID,
+		})
 		return err
-	}
-	return sc.Save()
+	})
 }
 
 // saveComment opens a new thread on the line the reader came from.
 func (m *model) saveComment(text string) error {
-	sc, err := mrsf.LoadOrCreate(m.document)
-	if err != nil {
+	quote := m.lineQuote()
+	return mrsf.Update(m.document, func(sc *mrsf.Sidecar) error {
+		added, err := sc.Add(mrsf.Comment{
+			Author:       mrsf.DefaultAuthor(),
+			Text:         text,
+			Line:         m.line,
+			SelectedText: quote,
+		})
+		if err == nil {
+			m.newID = added.ID
+		}
 		return err
-	}
-	added, err := sc.Add(mrsf.Comment{
-		Author:       mrsf.DefaultAuthor(),
-		Text:         text,
-		Line:         m.line,
-		SelectedText: m.lineQuote(),
 	})
-	if err != nil {
-		return err
-	}
-	if err := sc.Save(); err != nil {
-		return err
-	}
-	m.newID = added.ID
-	return nil
 }
 
 func (m *model) toggleResolved() tea.Cmd {
 	if len(m.threads) == 0 {
 		return nil
 	}
-	sc, err := mrsf.Load(m.document)
-	if err != nil {
+	id := m.threads[m.cursor].parent.ID
+
+	var resolved bool
+	if err := mrsf.Update(m.document, func(sc *mrsf.Sidecar) error {
+		c := sc.Find(id)
+		if c == nil {
+			return fmt.Errorf("that thread is no longer in the review")
+		}
+		c.Resolved = !c.Resolved
+		if c.Resolved {
+			c.SetOutcome(mrsf.OutcomeResolved)
+		} else {
+			c.SetOutcome("")
+		}
+		resolved = c.Resolved
+		return nil
+	}); err != nil {
 		m.status = err.Error()
 		return nil
 	}
-	if sc == nil {
-		m.status = "the review file is gone"
-		return nil
-	}
-	c := sc.Find(m.threads[m.cursor].parent.ID)
-	if c == nil {
-		m.status = "that thread is no longer in the review"
-		return nil
-	}
-	c.Resolved = !c.Resolved
-	if err := sc.Save(); err != nil {
-		m.status = err.Error()
-		return nil
-	}
-	m.status = map[bool]string{true: "resolved", false: "reopened"}[c.Resolved]
+
+	m.status = map[bool]string{true: "resolved", false: "reopened"}[resolved]
 	if err := m.reload(); err != nil {
 		m.status = err.Error()
 	}

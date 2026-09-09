@@ -33,45 +33,39 @@ func replyToComment(args []string) error {
 		return err
 	}
 
-	sidecar, err := mrsf.Load(*file)
-	if err != nil {
-		return err
-	}
-	if sidecar == nil {
-		return fmt.Errorf("%s has no review sidecar", *file)
-	}
-	parent, err := findByPrefix(sidecar, *id)
-	if err != nil {
-		return err
-	}
-
-	if *text == "" {
-		body, err := readText(parent.SelectedText, parent.Line, *useEditor)
+	var reply, parent *mrsf.Comment
+	if err := mrsf.Update(*file, func(sc *mrsf.Sidecar) error {
+		var err error
+		parent, err = findByPrefix(sc, *id)
 		if err != nil {
 			return err
 		}
-		*text = body
-	}
-	if *text == "" {
-		return fmt.Errorf("reply text is empty")
-	}
-
-	// Resolve before adding: Add appends, which may move the backing array and
-	// leave the parent pointer aiming at the old one.
-	if *resolve {
-		parent.Resolved = true
-	}
-	reply, err := sidecar.Add(mrsf.Comment{
-		Author:       firstNonEmpty(*author, mrsf.DefaultAuthor()),
-		Text:         *text,
-		Line:         parent.Line,
-		SelectedText: parent.SelectedText,
-		ReplyTo:      parent.ID,
-	})
-	if err != nil {
+		if *text == "" {
+			body, err := readText(parent.SelectedText, parent.Line, *useEditor)
+			if err != nil {
+				return err
+			}
+			*text = body
+		}
+		if *text == "" {
+			return fmt.Errorf("reply text is empty")
+		}
+		// Resolve before adding: Add appends, which may move the backing array
+		// and leave the parent pointer aiming at the old one.
+		parentID, parentLine, parentQuote := parent.ID, parent.Line, parent.SelectedText
+		if *resolve {
+			parent.Resolved = true
+			parent.SetOutcome(mrsf.OutcomeResolved)
+		}
+		reply, err = sc.Add(mrsf.Comment{
+			Author:       firstNonEmpty(*author, mrsf.DefaultAuthor()),
+			Text:         *text,
+			Line:         parentLine,
+			SelectedText: parentQuote,
+			ReplyTo:      parentID,
+		})
 		return err
-	}
-	if err := sidecar.Save(); err != nil {
+	}); err != nil {
 		return err
 	}
 	fmt.Printf("Replied %s to %s\n", shortID(reply.ID), shortID(parent.ID))

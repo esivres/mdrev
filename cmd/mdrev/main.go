@@ -212,10 +212,6 @@ func addComment(args []string) error {
 		return fmt.Errorf("comment text is empty")
 	}
 
-	sidecar, err := mrsf.LoadOrCreate(*file)
-	if err != nil {
-		return err
-	}
 	c := mrsf.Comment{
 		Author:       firstNonEmpty(*author, mrsf.DefaultAuthor()),
 		Text:         *text,
@@ -227,11 +223,13 @@ func addComment(args []string) error {
 	if *suggest != "" {
 		c.Extra = map[string]any{mrsf.SuggestedTextKey: *suggest}
 	}
-	added, err := sidecar.Add(c)
-	if err != nil {
+
+	var added *mrsf.Comment
+	if err := mrsf.Update(*file, func(sc *mrsf.Sidecar) error {
+		var err error
+		added, err = sc.Add(c)
 		return err
-	}
-	if err := sidecar.Save(); err != nil {
+	}); err != nil {
 		return err
 	}
 	fmt.Printf("Added comment %s to %s\n", shortID(added.ID), mrsf.Path(*file))

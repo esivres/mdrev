@@ -549,21 +549,19 @@ func (s *Server) executeCommand(params json.RawMessage) any {
 	}
 	uri, id, outcome := p.Arguments[0], p.Arguments[1], p.Arguments[2]
 
-	sc, err := mrsf.Load(uriToPath(uri))
-	if err != nil || sc == nil {
+	if err := mrsf.Update(uriToPath(uri), func(sc *mrsf.Sidecar) error {
+		c := sc.Find(id)
+		if c == nil {
+			return nil
+		}
+		c.Resolved = true
+		c.SetOutcome(outcome)
+		return nil
+	}); err != nil {
 		s.tracef("resolve: %v", err)
 		return nil
 	}
-	c := sc.Find(id)
-	if c == nil {
-		return nil
-	}
-	c.Resolved = true
-	c.SetOutcome(outcome)
-	if err := sc.Save(); err != nil {
-		s.tracef("save: %v", err)
-		return nil
-	}
+
 	s.publish(uri)
 	return nil
 }
@@ -572,25 +570,20 @@ func (s *Server) executeCommand(params json.RawMessage) any {
 // the human, not the agent, so it is left to the sidecar's default rather than
 // guessed here.
 func (s *Server) fileDraft(uri, anchor, text, line string) any {
-	sidecar, err := mrsf.LoadOrCreate(uriToPath(uri))
-	if err != nil {
-		s.tracef("file: %v", err)
-		return nil
-	}
 	n, _ := strconv.Atoi(line)
-	if _, err := sidecar.Add(mrsf.Comment{
-		Author:       mrsf.DefaultAuthor(),
-		Text:         text,
-		Line:         n,
-		SelectedText: anchor,
+	if err := mrsf.Update(uriToPath(uri), func(sc *mrsf.Sidecar) error {
+		_, err := sc.Add(mrsf.Comment{
+			Author:       mrsf.DefaultAuthor(),
+			Text:         text,
+			Line:         n,
+			SelectedText: anchor,
+		})
+		return err
 	}); err != nil {
 		s.tracef("file: %v", err)
 		return nil
 	}
-	if err := sidecar.Save(); err != nil {
-		s.tracef("save: %v", err)
-		return nil
-	}
+
 	s.publish(uri)
 	return nil
 }

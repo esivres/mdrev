@@ -75,10 +75,10 @@ func Load(document string) (*Sidecar, error) {
 	return &s, nil
 }
 
-// Save writes the sidecar atomically. A review is the only copy of a
+// save writes the sidecar atomically. A review is the only copy of a
 // discussion, and a half-written file can still parse as valid YAML with
 // comments missing — which the next save would make permanent.
-func (s *Sidecar) Save() error {
+func (s *Sidecar) save() error {
 	s.dropShadowedKeys()
 
 	var buf strings.Builder

@@ -38,7 +38,7 @@ func TestForeignKeysSurviveASave(t *testing.T) {
 	if _, err := sc.Add(Comment{Text: "second", SelectedText: "claim"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sc.Save(); err != nil {
+	if err := sc.save(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -101,7 +101,7 @@ func TestSaveNeverExposesAPartialFile(t *testing.T) {
 	}()
 
 	for i := 0; i < 50; i++ {
-		if err := sc.Save(); err != nil {
+		if err := sc.save(); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -126,7 +126,7 @@ func TestSaveKeepsFilePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sc.Save(); err != nil {
+	if err := sc.save(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,7 +166,7 @@ func TestSaveWritesThroughASymlink(t *testing.T) {
 	if _, err := sc.Add(Comment{Text: "added", SelectedText: "claim"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sc.Save(); err != nil {
+	if err := sc.save(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -201,7 +201,7 @@ func TestCollidingExtraKeyDoesNotPanic(t *testing.T) {
 	sc.Extra = map[string]any{"document": "collision"}
 	sc.Comments[0].Extra = map[string]any{"resolved": "collision"}
 
-	if err := sc.Save(); err != nil {
+	if err := sc.save(); err != nil {
 		t.Fatalf("save must not fail on a colliding key: %v", err)
 	}
 	if _, err := Load(doc); err != nil {

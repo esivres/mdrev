@@ -3,9 +3,14 @@
 Review data lives beside the document, never inside it:
 
 ```
-doc.md              the document
-doc.md.review.yaml  the review
+doc.md                   the document
+doc.md.review.yaml       the review
+doc.md.review.yaml.lock  an empty file used to serialise writes
 ```
+
+The lock file is created next to the review and never removed — deleting it is
+the race where one process unlinks a file another has just opened. It holds no
+data and can be ignored by version control.
 
 The format is [MRSF](https://sidemark.org), the Markdown Review Sidecar Format.
 mdrev reads and writes it directly, and its output is accepted by the reference
@@ -70,6 +75,18 @@ Latency p99 must not exceed 200 ms. {>>too optimistic<<}
 This is not storage — it is input. The marker is highlighted as unfiled, and
 its code action moves it into the sidecar, anchored to the words in front of
 it, while removing it from the document. Nothing stays behind.
+
+## Concurrent writes
+
+Every write — from the CLI, the language server or the browser — goes through
+one function that takes an exclusive lock on the lock file first. Without it a
+review being written from two processes loses most of what is written: in a
+test of 80 concurrent writes, 67 comments disappeared with no error anywhere.
+
+The lock is advisory, so it binds mdrev and nothing else. A tool that knows
+nothing about it — the reference `mrsf` CLI, an editor saving the YAML — can
+still overwrite a concurrent change, and advisory locks are unreliable on
+network filesystems and in file-syncing folders.
 
 ## Editing by hand
 
