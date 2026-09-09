@@ -6,8 +6,9 @@ import (
 	"time"
 )
 
-// Bounded so a keystroke never hangs on somebody else's lock.
-const lockTimeout = 2 * time.Second
+// Bounded so a keystroke never hangs on somebody else's lock. A variable so a
+// test can wait out a crowd of writers without asserting on timing.
+var lockTimeout = 2 * time.Second
 
 // Update applies fn to a document's review under an exclusive lock. It is the
 // only way to write one, so the lock cannot be forgotten.

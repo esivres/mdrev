@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Two processes writing a review at once is the ordinary case: an agent files
@@ -17,6 +18,11 @@ func TestConcurrentWritersDoNotLoseComments(t *testing.T) {
 	if err := os.WriteFile(doc, []byte("Alpha beta gamma.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+
+	// The lock is what is under test, not how fast it is acquired: under the
+	// race detector eight writers take well over the interactive timeout.
+	defer func(previous time.Duration) { lockTimeout = previous }(lockTimeout)
+	lockTimeout = time.Minute
 
 	const writers, each = 8, 10
 	var wg sync.WaitGroup
