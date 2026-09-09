@@ -9,8 +9,9 @@ comments. Zed gets an extension; elsewhere you point your client at
 - **Diagnostics** for every open comment, anchored to the quoted fragment.
   Replies are folded into the parent's message; a comment whose fragment is
   gone is kept and marked `[anchor lost]` rather than dropped.
-- **Code actions**: `Apply suggestion` replaces the quoted text with the
-  proposed one and closes the thread; `Dismiss / mark resolved` only closes it;
+- **Code actions**: on a comment proposing an edit, `Apply suggestion` replaces
+  the quoted text and closes the thread, `Keep the current wording` closes it
+  without changing anything; on a plain remark, `Resolve comment` closes it.
   `File as review comment` moves a CriticMarkup draft into the sidecar.
 - **Live reload**: the sidecar's modification time is polled once a second, so
   a comment an agent adds from the CLI appears without touching the document.

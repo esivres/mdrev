@@ -473,7 +473,8 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 		if !overlaps(rng, p.Range) {
 			continue
 		}
-		if suggested, ok := c.SuggestedText(); ok && anchored {
+		suggested, hasSuggestion := c.SuggestedText()
+		if hasSuggestion && anchored {
 			actions = append(actions, CodeAction{
 				Title: "Apply suggestion: " + firstLine(suggested),
 				Kind:  "quickfix",
@@ -487,8 +488,14 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 				},
 			})
 		}
+		// Naming the two cases apart: turning down a proposed edit is a
+		// different decision from closing a remark you have dealt with.
+		closeTitle := "Resolve comment: " + firstLine(c.Text)
+		if hasSuggestion {
+			closeTitle = "Keep the current wording: " + firstLine(c.SelectedText)
+		}
 		actions = append(actions, CodeAction{
-			Title: "Dismiss / mark resolved: " + firstLine(c.Text),
+			Title: closeTitle,
 			Kind:  "quickfix",
 			Command: &Command{
 				Title:     "resolve",
