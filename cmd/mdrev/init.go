@@ -335,16 +335,20 @@ func ownExtensionInstalled() bool {
 }
 
 func zedTasks(exe string) string {
+	// The selection travels in the environment rather than in an argument: Zed
+	// splits an argument on whitespace, so a phrase arrived as several
+	// arguments and a paragraph could not be passed at all.
+	env := map[string]any{
+		"MDREV_FILE":  "$ZED_FILE",
+		"MDREV_LINE":  "$ZED_ROW",
+		"MDREV_QUOTE": "$ZED_SELECTED_TEXT",
+	}
 	task := func(label string, extra ...string) map[string]any {
-		args := append([]string{"comment",
-			"--file", "$ZED_FILE",
-			"--line", "$ZED_ROW",
-			"--quote", "$ZED_SELECTED_TEXT",
-		}, extra...)
 		return map[string]any{
 			"label":                 label,
 			"command":               exe,
-			"args":                  args,
+			"args":                  append([]string{"comment"}, extra...),
+			"env":                   env,
 			"use_new_terminal":      false,
 			"allow_concurrent_runs": false,
 			"reveal":                "always",
@@ -358,7 +362,8 @@ func zedTasks(exe string) string {
 		map[string]any{
 			"label":                 threadsTask,
 			"command":               exe,
-			"args":                  []string{"threads", "--line", "$ZED_ROW", "$ZED_FILE"},
+			"args":                  []string{"threads"},
+			"env":                   env,
 			"use_new_terminal":      false,
 			"allow_concurrent_runs": false,
 			"reveal":                "always",

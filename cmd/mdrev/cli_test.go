@@ -273,3 +273,55 @@ func TestNestedReplyIsVisible(t *testing.T) {
 		t.Errorf("a reply to a reply must stay visible:\n%s", out)
 	}
 }
+
+// The editor passes a selection through the environment because a task
+// argument is split on whitespace: a phrase arrived as several arguments, and
+// a paragraph could not be passed at all.
+func TestSelectionComesFromTheEnvironment(t *testing.T) {
+	bin, dir := fixture(t)
+
+	cmd := exec.Command(bin, "comment", "--text", "why?", "--author", "A")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"MDREV_FILE=doc.md",
+		"MDREV_LINE=1",
+		"MDREV_QUOTE=Alpha beta gamma.")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+
+	out, err := run(t, bin, dir, "list", "doc.md", "--json")
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	var got []struct {
+		SelectedText string `json:"selected_text"`
+		Line         int    `json:"line"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].SelectedText != "Alpha beta gamma." {
+		t.Errorf("a multi-word selection must survive intact, got %+v", got)
+	}
+	if got[0].Line != 1 {
+		t.Errorf("line from the environment: got %d, want 1", got[0].Line)
+	}
+}
+
+// A flag still wins, so the command stays usable by hand and by an agent.
+func TestFlagsBeatTheEnvironment(t *testing.T) {
+	bin, dir := fixture(t)
+
+	cmd := exec.Command(bin, "comment", "--file", "doc.md", "--quote", "beta", "--text", "x")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "MDREV_QUOTE=Alpha beta gamma.")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+
+	out, _ := run(t, bin, dir, "list", "doc.md", "--json")
+	if !strings.Contains(out, `"selected_text": "beta"`) {
+		t.Errorf("the flag must win over the environment:\n%s", out)
+	}
+}

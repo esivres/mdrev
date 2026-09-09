@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/esivres/mdrev/internal/lsp"
@@ -98,13 +99,22 @@ func browseThreads(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(rest) < 1 {
+	document := os.Getenv("MDREV_FILE")
+	if len(rest) > 0 {
+		document = rest[0]
+	}
+	if document == "" {
 		return fmt.Errorf("usage: mdrev threads <file.md> [--line N]")
 	}
-	if err := requireDocument(rest[0]); err != nil {
+	if *line == 0 {
+		if n, err := strconv.Atoi(os.Getenv("MDREV_LINE")); err == nil {
+			*line = n
+		}
+	}
+	if err := requireDocument(document); err != nil {
 		return err
 	}
-	return tui.Run(rest[0], *line)
+	return tui.Run(document, *line)
 }
 
 func printComments(args []string) error {
@@ -206,6 +216,16 @@ func addComment(args []string) error {
 	if len(rest) > 0 {
 		return fmt.Errorf("unexpected argument %q; the document is given with --file", rest[0])
 	}
+	// The editor passes selections through the environment: a task argument is
+	// split on whitespace, so anything longer than one word arrived in pieces.
+	*file = firstNonEmpty(*file, os.Getenv("MDREV_FILE"))
+	*quote = firstNonEmpty(*quote, os.Getenv("MDREV_QUOTE"))
+	if *line == 0 {
+		if n, err := strconv.Atoi(os.Getenv("MDREV_LINE")); err == nil {
+			*line = n
+		}
+	}
+
 	if *file == "" {
 		return fmt.Errorf("--file is required")
 	}
