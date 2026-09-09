@@ -15,10 +15,11 @@ comments. Zed gets an extension; elsewhere you point your client at
   `File as review comment` moves a CriticMarkup draft into the sidecar.
 - **Live reload**: the sidecar's modification time is polled once a second, so
   a comment an agent adds from the CLI appears without touching the document.
-- **Closing applied suggestions**: when the proposed text has taken the place
-  of the fragment it replaces, the thread is resolved. This does not depend on
-  the code action's command having run — the change may have been typed by
-  hand, and a client is free to apply an action's edit without its command.
+- **Recording the outcome**: applying a suggestion closes the thread as
+  `applied`, turning it down closes it as `dismissed`. The server does not try
+  to guess whether a change was made by hand — heuristics for that closed
+  threads nobody had touched. To close a thread outside the editor, use
+  `mdrev apply` or `mdrev resolve`.
 
 The server never edits the document on its own — Zed implements neither
 `workspace/applyEdit` nor `window/showDocument`, and every change therefore

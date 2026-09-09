@@ -6,6 +6,22 @@ on:
 
 jobs:
   test:
+    # The setup path reads editor directories that differ per platform, and
+    # releases ship for all three, so all three are tested.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  format:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,5 +29,11 @@ jobs:
         with:
           go-version: stable
       - run: gofmt -l . | tee /dev/stderr | (! read)
-      - run: go vet ./...
-      - run: go test ./...
+
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add wasm32-wasip1
+      - run: cargo build --release --target wasm32-wasip1
+        working-directory: zed-extension

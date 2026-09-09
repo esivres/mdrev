@@ -26,7 +26,8 @@ archives:
 brews:
   - repository:
       owner: esivres
-      name: homebrew-tap
+      name: mdrev
+    directory: Formula
     homepage: https://github.com/esivres/mdrev
     description: Review markdown documents — inline comments, questions and suggested edits
     license: MIT
@@ -36,7 +37,8 @@ brews:
 scoops:
   - repository:
       owner: esivres
-      name: scoop-bucket
+      name: mdrev
+    directory: bucket
     homepage: https://github.com/esivres/mdrev
     description: Review markdown documents — inline comments, questions and suggested edits
     license: MIT

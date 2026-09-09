@@ -18,6 +18,7 @@ type jsonComment struct {
 	Severity     string        `json:"severity,omitempty"`
 	SelectedText string        `json:"selected_text,omitempty"`
 	Suggested    string        `json:"x_suggested_text,omitempty"`
+	Outcome      string        `json:"x_outcome,omitempty"`
 	Replies      []jsonComment `json:"replies,omitempty"`
 }
 
@@ -36,6 +37,7 @@ func toJSON(c mrsf.Comment, replies []mrsf.Comment) jsonComment {
 	if s, ok := c.SuggestedText(); ok {
 		out.Suggested = s
 	}
+	out.Outcome = c.Outcome()
 	for _, r := range replies {
 		out.Replies = append(out.Replies, toJSON(r, nil))
 	}

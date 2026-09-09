@@ -8,4 +8,4 @@ authors = ["esivres"]
 
 [language_servers.mdrev]
 name = "mdrev"
-languages = ["Markdown", "Markdown-Inline"]
+languages = ["Markdown"]

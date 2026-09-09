@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/esivres/mdrev/internal/anchor"
 	"github.com/esivres/mdrev/internal/mrsf"
 )
 
@@ -83,6 +82,7 @@ type Server struct {
 	out       *bufio.Writer
 	outMu     sync.Mutex
 	done      chan struct{}
+	stopped   chan struct{}
 	log       *os.File
 }
 
@@ -92,6 +92,7 @@ func NewServer(out io.Writer) *Server {
 		sidecarAt: map[string]time.Time{},
 		out:       bufio.NewWriter(out),
 		done:      make(chan struct{}),
+		stopped:   make(chan struct{}),
 	}
 	// Zed shows nothing from a language server's stderr, so keep a trace file.
 	if f, err := os.OpenFile(filepath.Join(os.TempDir(), "mdrev-lsp.log"),
@@ -109,10 +110,12 @@ func (s *Server) tracef(format string, args ...any) {
 }
 
 func (s *Server) Run(r io.Reader) error {
-	// The watcher writes to the same stream, so it must be stopped before the
-	// final flush rather than left running past Run.
+	// The watcher writes to the same stream, so the flush is only final once it
+	// has actually stopped — signalling it is not enough, it may be midway
+	// through building a message.
 	defer func() {
 		close(s.done)
+		<-s.stopped
 		s.outMu.Lock()
 		defer s.outMu.Unlock()
 		s.out.Flush()
@@ -223,7 +226,6 @@ func (s *Server) handle(msg *rpcMessage) {
 		}
 		json.Unmarshal(msg.Params, &p)
 		s.setDoc(p.TextDocument.URI, p.TextDocument.Text)
-		s.closeAppliedSuggestions(p.TextDocument.URI)
 		s.publish(p.TextDocument.URI)
 	case "textDocument/didChange":
 		var p struct {
@@ -246,7 +248,6 @@ func (s *Server) handle(msg *rpcMessage) {
 			} `json:"textDocument"`
 		}
 		json.Unmarshal(msg.Params, &p)
-		s.closeAppliedSuggestions(p.TextDocument.URI)
 		s.publish(p.TextDocument.URI)
 	case "textDocument/didClose":
 		var p struct {
@@ -266,7 +267,7 @@ func (s *Server) handle(msg *rpcMessage) {
 	default:
 		// Answering an unsupported request with null makes clients that expect
 		// a list report a decoding error; say "no such method" instead.
-		if len(msg.ID) > 0 {
+		if len(msg.ID) > 0 && string(msg.ID) != "null" {
 			s.send(rpcMessage{ID: msg.ID, Error: &rpcError{
 				Code:    -32601,
 				Message: "method not supported: " + msg.Method,
@@ -312,10 +313,16 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 	}
 	sc, err := mrsf.Load(uriToPath(uri))
 	if err != nil {
-		// An unreadable sidecar must not blank the review out silently; keep
-		// whatever the document itself carries.
+		// Every comment is invisible while the file is unparseable, so say so
+		// in the editor instead of looking like a review with nothing in it.
 		s.tracef("sidecar: %v", err)
-		return draftDiagnostics(newLineIndex(text))
+		li := newLineIndex(text)
+		return append([]Diagnostic{{
+			Range:    Range{},
+			Severity: severityWarn,
+			Source:   "review",
+			Message:  "The review file cannot be read, so no comments are shown: " + err.Error(),
+		}}, draftDiagnostics(li)...)
 	}
 	if sc == nil {
 		return draftDiagnostics(newLineIndex(text))
@@ -348,7 +355,7 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 		for _, r := range replies[c.ID] {
 			msg += "\n\n" + r.Author + ": " + r.Text
 		}
-		if !anchored && c.SelectedText != "" {
+		if !anchored && (c.SelectedText != "" || !li.hasLine(c.Line)) {
 			msg = "[anchor lost] " + msg
 		}
 		out = append(out, Diagnostic{
@@ -359,61 +366,6 @@ func (s *Server) diagnostics(uri string) []Diagnostic {
 		})
 	}
 	return out
-}
-
-// closeAppliedSuggestions resolves a thread once its proposed text has taken
-// the place of the fragment it replaces. Relying on the code action's command
-// to do this is not enough: the human may apply the edit by hand, and a client
-// is free to run the action's edit without its command.
-func (s *Server) closeAppliedSuggestions(uri string) {
-	s.mu.Lock()
-	text, ok := s.docs[uri]
-	s.mu.Unlock()
-	if !ok {
-		return
-	}
-	sc, err := mrsf.Load(uriToPath(uri))
-	if err != nil || sc == nil {
-		return
-	}
-
-	lines := strings.Split(text, "\n")
-	changed := false
-	for i := range sc.Comments {
-		if suggestionApplied(lines, &sc.Comments[i]) {
-			sc.Comments[i].Resolved = true
-			changed = true
-		}
-	}
-	if changed {
-		if err := sc.Save(); err != nil {
-			s.tracef("close applied: %v", err)
-		}
-	}
-}
-
-// suggestionApplied reports whether the proposed wording has replaced the
-// fragment it was written against: the fragment is gone from the document and
-// the replacement is there.
-//
-// Distance heuristics were tried and dropped. A comment's recorded line is
-// deliberately allowed to go stale — that is what anchoring by text is for — so
-// "near the recorded line" means nothing, and suggested wordings are short
-// enough to appear in unrelated prose. Requiring the fragment to be gone costs
-// us the case where it also occurs elsewhere (inside a diagram, say), which
-// stays open for the human to close. Resolving a thread nobody closed hides
-// live review; leaving one open merely asks for a keystroke.
-func suggestionApplied(lines []string, c *mrsf.Comment) bool {
-	suggested, ok := c.SuggestedText()
-	if !ok || c.Resolved || c.SelectedText == "" {
-		return false
-	}
-	// A line-wise search can never find a multi-line text, which would make
-	// every such fragment look as though it had been removed.
-	if strings.Contains(suggested, "\n") || strings.Contains(c.SelectedText, "\n") {
-		return false
-	}
-	return !anchor.Found(lines, c.SelectedText) && anchor.Found(lines, suggested)
 }
 
 // draftDiagnostics surface comments typed into the document as CriticMarkup,
@@ -441,6 +393,7 @@ func (s *Server) publish(uri string) {
 // watchSidecars republishes when a sidecar changes on disk, so comments an
 // agent adds from the CLI appear without touching the document.
 func (s *Server) watchSidecars() {
+	defer close(s.stopped)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -487,7 +440,7 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 	text, open := s.docs[uri]
 	s.mu.Unlock()
 	if !open {
-		return nil
+		return []CodeAction{}
 	}
 	li := newLineIndex(text)
 
@@ -522,7 +475,7 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 				Command: &Command{
 					Title:     "resolve",
 					Command:   "mdrev.resolve",
-					Arguments: []any{uri, c.ID},
+					Arguments: []any{uri, c.ID, mrsf.OutcomeApplied},
 				},
 			})
 		}
@@ -532,13 +485,17 @@ func (s *Server) codeActions(params json.RawMessage) []CodeAction {
 		if hasSuggestion {
 			closeTitle = "Keep the current wording: " + summary(c.SelectedText)
 		}
+		outcome := mrsf.OutcomeResolved
+		if hasSuggestion {
+			outcome = mrsf.OutcomeDismissed
+		}
 		actions = append(actions, CodeAction{
 			Title: closeTitle,
 			Kind:  "quickfix",
 			Command: &Command{
 				Title:     "resolve",
 				Command:   "mdrev.resolve",
-				Arguments: []any{uri, c.ID},
+				Arguments: []any{uri, c.ID, outcome},
 			},
 		})
 	}
@@ -600,10 +557,10 @@ func (s *Server) executeCommand(params json.RawMessage) any {
 	switch {
 	case p.Command == "mdrev.file" && len(p.Arguments) >= 4:
 		return s.fileDraft(p.Arguments[0], p.Arguments[1], p.Arguments[2], p.Arguments[3])
-	case p.Command != "mdrev.resolve" || len(p.Arguments) < 2:
+	case p.Command != "mdrev.resolve" || len(p.Arguments) < 3:
 		return nil
 	}
-	uri, id := p.Arguments[0], p.Arguments[1]
+	uri, id, outcome := p.Arguments[0], p.Arguments[1], p.Arguments[2]
 
 	sc, err := mrsf.Load(uriToPath(uri))
 	if err != nil || sc == nil {
@@ -615,6 +572,7 @@ func (s *Server) executeCommand(params json.RawMessage) any {
 		return nil
 	}
 	c.Resolved = true
+	c.SetOutcome(outcome)
 	if err := sc.Save(); err != nil {
 		s.tracef("save: %v", err)
 		return nil

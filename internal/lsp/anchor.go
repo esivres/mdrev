@@ -48,6 +48,12 @@ func (li *lineIndex) position(offset int) Position {
 	return Position{Line: lo, Character: len(utf16.Encode([]rune(prefix)))}
 }
 
+// hasLine reports whether a 1-based line exists in the document, so a comment
+// pointing past the end can be flagged rather than silently shown at the top.
+func (li *lineIndex) hasLine(line1 int) bool {
+	return line1 >= 1 && line1 <= len(li.starts)
+}
+
 // lineRange covers a whole 1-based line, used when the anchor text is gone.
 func (li *lineIndex) lineRange(line1 int) Range {
 	idx := line1 - 1

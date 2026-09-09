@@ -107,10 +107,19 @@ func (s *Sidecar) Save() error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+	if err := os.Chmod(tmp.Name(), s.perm()); err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), s.path)
+}
+
+// perm keeps whatever mode the sidecar already had: replacing the file must not
+// widen access to a review someone deliberately kept private.
+func (s *Sidecar) perm() os.FileMode {
+	if info, err := os.Stat(s.path); err == nil {
+		return info.Mode().Perm()
+	}
+	return 0o644
 }
 
 func (s *Sidecar) Find(id string) *Comment {
@@ -120,4 +129,30 @@ func (s *Sidecar) Find(id string) *Comment {
 		}
 	}
 	return nil
+}
+
+// Outcomes record how a thread ended. Applying a suggestion and turning it
+// down both close the thread, and without this they leave identical state — so
+// an agent cannot tell an accepted proposal from a rejected one, and proposes
+// the same change again.
+const (
+	OutcomeKey       = "x_outcome"
+	OutcomeApplied   = "applied"
+	OutcomeDismissed = "dismissed"
+	OutcomeResolved  = "resolved"
+)
+
+func (c Comment) Outcome() string {
+	s, _ := c.Extra[OutcomeKey].(string)
+	return s
+}
+
+func (c *Comment) SetOutcome(outcome string) {
+	if outcome == "" {
+		return
+	}
+	if c.Extra == nil {
+		c.Extra = map[string]any{}
+	}
+	c.Extra[OutcomeKey] = outcome
 }

@@ -29,6 +29,9 @@ func replyToComment(args []string) error {
 	if *file == "" || *id == "" {
 		return fmt.Errorf("--file and --id are required")
 	}
+	if err := requireDocument(*file); err != nil {
+		return err
+	}
 
 	sidecar, err := mrsf.Load(*file)
 	if err != nil {

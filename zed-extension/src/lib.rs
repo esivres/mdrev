@@ -11,29 +11,32 @@ impl MdrevExtension {
     /// on PATH (installed with brew, scoop or `go install`), and only then a
     /// download — so a user who manages mdrev themselves never gets a second,
     /// divergent copy.
+    ///
+    /// The cache is consulted last, immediately before downloading. Checking it
+    /// first would pin whatever was downloaded once for the rest of the
+    /// session, silently ignoring a path the user adds to their settings or a
+    /// binary they install afterwards.
     fn binary_path(
         &mut self,
         language_server_id: &zed::LanguageServerId,
         worktree: &zed::Worktree,
     ) -> Result<String> {
-        if let Some(path) = &self.cached_binary_path {
-            if fs::metadata(path).is_ok_and(|stat| stat.is_file()) {
-                return Ok(path.clone());
-            }
-        }
-
         if let Ok(settings) = LspSettings::for_worktree(language_server_id.as_ref(), worktree) {
             if let Some(binary) = settings.binary {
                 if let Some(path) = binary.path {
-                    self.cached_binary_path = Some(path.clone());
                     return Ok(path);
                 }
             }
         }
 
         if let Some(path) = worktree.which("mdrev") {
-            self.cached_binary_path = Some(path.clone());
             return Ok(path);
+        }
+
+        if let Some(path) = &self.cached_binary_path {
+            if fs::metadata(path).is_ok_and(|stat| stat.is_file()) {
+                return Ok(path.clone());
+            }
         }
 
         let path = self.download(language_server_id)?;
@@ -52,7 +55,8 @@ impl MdrevExtension {
                 require_assets: true,
                 pre_release: false,
             },
-        )?;
+        )
+        .map_err(|e| format!("mdrev is not on your PATH and no release could be fetched: {e}"))?;
 
         let (platform, arch) = zed::current_platform();
         let os = match platform {
@@ -66,14 +70,25 @@ impl MdrevExtension {
             unsupported => return Err(format!("unsupported architecture {unsupported:?}")),
         };
 
-        // Matching on the suffix rather than the full name keeps this working
-        // whatever the release archives are named after the version.
-        let suffix = format!("_{os}_{arch}.");
+        // Match the archive extension too: releases carry checksums, and may
+        // later carry packages or signatures, any of which would otherwise be
+        // picked up and handed to the archive extractor.
+        let (extension, file_type) = if matches!(platform, zed::Os::Windows) {
+            (".zip", zed::DownloadedFileType::Zip)
+        } else {
+            (".tar.gz", zed::DownloadedFileType::GzipTar)
+        };
+        let suffix = format!("_{os}_{arch}{extension}");
         let asset = release
             .assets
             .iter()
-            .find(|asset| asset.name.contains(&suffix))
-            .ok_or_else(|| format!("no release asset for {os}/{arch}"))?;
+            .find(|asset| asset.name.ends_with(&suffix))
+            .ok_or_else(|| {
+                format!(
+                    "release {} has no asset for {os}/{arch}",
+                    release.version
+                )
+            })?;
 
         let version_dir = format!("mdrev-{}", release.version);
         let binary_name = if matches!(platform, zed::Os::Windows) {
@@ -88,14 +103,8 @@ impl MdrevExtension {
                 language_server_id,
                 &zed::LanguageServerInstallationStatus::Downloading,
             );
-            let file_type = if asset.name.ends_with(".zip") {
-                zed::DownloadedFileType::Zip
-            } else {
-                zed::DownloadedFileType::GzipTar
-            };
             zed::download_file(&asset.download_url, &version_dir, file_type)
                 .map_err(|e| format!("failed to download mdrev: {e}"))?;
-            zed::make_file_executable(&binary_path)?;
 
             // Drop the copies left by earlier versions.
             if let Ok(entries) = fs::read_dir(".") {
@@ -108,6 +117,15 @@ impl MdrevExtension {
                 }
             }
         }
+
+        // Outside the guard above: a download that succeeded while this failed
+        // would otherwise leave a file that exists but cannot be run, and every
+        // later attempt would take the early-out and spawn it again.
+        zed::make_file_executable(&binary_path)?;
+        zed::set_language_server_installation_status(
+            language_server_id,
+            &zed::LanguageServerInstallationStatus::None,
+        );
 
         Ok(binary_path)
     }
@@ -125,10 +143,21 @@ impl zed::Extension for MdrevExtension {
         language_server_id: &zed::LanguageServerId,
         worktree: &zed::Worktree,
     ) -> Result<zed::Command> {
+        // Honour arguments from settings: the CLI's own setup writes a binary
+        // block containing them, and ignoring it would make that setting a lie.
+        let args = LspSettings::for_worktree(language_server_id.as_ref(), worktree)
+            .ok()
+            .and_then(|settings| settings.binary)
+            .and_then(|binary| binary.arguments)
+            .unwrap_or_else(|| vec!["lsp".to_string()]);
+
         Ok(zed::Command {
             command: self.binary_path(language_server_id, worktree)?,
-            args: vec!["lsp".to_string()],
-            env: Default::default(),
+            args,
+            // The server resolves sidecars relative to the document and reads
+            // git config for the comment author, so it needs the real
+            // environment rather than an empty one.
+            env: worktree.shell_env(),
         })
     }
 }

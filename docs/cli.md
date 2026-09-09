@@ -64,6 +64,30 @@ Replies in a thread. A reply inherits its parent's anchor.
 | `--resolve` | mark the thread resolved after replying |
 | `--author` | as for `comment` |
 
+## mdrev apply
+
+Applies a comment's suggested edit to the document and closes the thread as
+`applied`. This is the only command that writes to the document itself.
+
+| flag | meaning |
+|---|---|
+| `--file` | the document; required |
+| `--id` | the comment whose suggestion to apply; an id prefix is enough |
+
+The replacement lands on the occurrence nearest the comment, not the first one
+in the file.
+
+## mdrev resolve
+
+Closes a thread without replying to it.
+
+| flag | meaning |
+|---|---|
+| `--file` | the document; required |
+| `--id` | the comment to close; an id prefix is enough |
+| `--dismiss` | record it as turned down rather than settled |
+| `--reopen` | reopen a closed thread instead |
+
 ## mdrev list
 
 Prints open threads with their replies. `--json` gives an agent the same
@@ -74,7 +98,12 @@ review is clean.
 ```sh
 mdrev list spec.md
 mdrev list spec.md --json
+mdrev list spec.md --json --all   # resolved threads too, with x_outcome
 ```
+
+Closing a thread records how it ended — `applied`, `dismissed` or `resolved` —
+in `x_outcome`. Without that, an accepted suggestion and a rejected one leave
+identical state, and an agent proposes the same edit again.
 
 ## mdrev threads
 

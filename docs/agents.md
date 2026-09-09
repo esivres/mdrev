@@ -32,7 +32,12 @@ mdrev comment --file doc.md --type suggestion \
   --author Claude --text "why this is better"
 ```
 
-5. You apply or dismiss it from the editor in one action.
+5. You apply or dismiss it from the editor in one action — or the agent lands
+   it itself with `mdrev apply --file doc.md --id <id>` once you have agreed.
+
+Either way the thread records how it ended, and `mdrev list doc.md --json --all`
+shows it as `x_outcome: applied | dismissed | resolved`. An agent that cannot
+see the outcome of its own proposal will make the same one again.
 
 Step 4 is the part worth insisting on. A silent rewrite is unreviewable: you
 have to diff the document to find out what the agent decided. A suggestion is

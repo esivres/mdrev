@@ -15,5 +15,8 @@ func DefaultAuthor() string {
 			return name
 		}
 	}
-	return os.Getenv("USER")
+	if user := os.Getenv("USER"); user != "" {
+		return user
+	}
+	return os.Getenv("USERNAME") // Windows
 }

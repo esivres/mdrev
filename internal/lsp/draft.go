@@ -62,10 +62,22 @@ func draftEnd(text string, start int) (int, bool) {
 		return 0, false
 	}
 	body := rest[:closing]
-	if strings.Contains(body, "\n\n") || strings.Contains(body, draftOpen) {
+	if hasBlankLine(body) || strings.Contains(body, draftOpen) {
 		return 0, false
 	}
 	return start + len(draftOpen) + closing + len(draftClose), true
+}
+
+// hasBlankLine reports whether the text contains an empty line. It cannot be a
+// search for "\n\n": on a CRLF document that is "\r\n\r\n", and the guard
+// would quietly do nothing on every file written by a Windows editor.
+func hasBlankLine(text string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.TrimRight(line, "\r") == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // anchorFor quotes the words just before the marker, which is where a reader

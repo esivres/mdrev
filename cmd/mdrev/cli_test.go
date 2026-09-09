@@ -158,3 +158,64 @@ func firstID(t *testing.T, bin, dir string) string {
 	}
 	return got[0].ID
 }
+
+// Applying a suggestion must land on the occurrence the comment is about. The
+// same words often appear elsewhere, and rewriting the wrong line is damage
+// nobody would notice until much later.
+func TestApplyRewritesTheAnchoredOccurrence(t *testing.T) {
+	bin := build(t)
+	dir := t.TempDir()
+	doc := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(doc, []byte(
+		"Latency must not exceed 200 ms.\n\nUnrelated prose about 200 ms.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, bin, dir, "comment", "--file", "doc.md", "--line", "1",
+		"--quote", "200 ms", "--suggest", "500 ms", "--type", "suggestion", "--text", "too tight")
+	id := firstID(t, bin, dir)
+
+	if out, err := run(t, bin, dir, "apply", "--file", "doc.md", "--id", id[:8]); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+
+	got, err := os.ReadFile(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Latency must not exceed 500 ms.\n\nUnrelated prose about 200 ms.\n"
+	if string(got) != want {
+		t.Errorf("document after apply:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+// An agent has to be able to tell an accepted proposal from a rejected one,
+// or it will propose the same edit again. Both close the thread, so the
+// difference has to be recorded.
+func TestOutcomeDistinguishesAppliedFromDismissed(t *testing.T) {
+	bin, dir := fixture(t)
+	run(t, bin, dir, "comment", "--file", "doc.md", "--line", "1",
+		"--quote", "beta", "--suggest", "BETA", "--type", "suggestion", "--text", "shout")
+	id := firstID(t, bin, dir)
+	if out, err := run(t, bin, dir, "resolve", "--file", "doc.md", "--id", id[:8], "--dismiss"); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+
+	if out, _ := run(t, bin, dir, "list", "doc.md", "--json"); strings.TrimSpace(out) != "[]" {
+		t.Errorf("a closed thread must leave the open list, got %s", out)
+	}
+
+	out, err := run(t, bin, dir, "list", "doc.md", "--json", "--all")
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	var got []struct {
+		Resolved bool   `json:"resolved"`
+		Outcome  string `json:"x_outcome"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || !got[0].Resolved || got[0].Outcome != "dismissed" {
+		t.Errorf("--all must show how the thread ended, got %+v", got)
+	}
+}

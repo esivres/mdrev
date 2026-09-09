@@ -20,6 +20,10 @@ import (
 // yet, so it overrides the binary of one that does. Markdownlint is chosen
 // over Marksman because Marksman is worth keeping alive alongside us: Zed runs
 // several servers per language, so its link navigation survives.
+// extensionID is how the extension registers itself; the registry requires a
+// language-server-only extension to say so in its id.
+const extensionID = "mdrev-language-server"
+
 const hostExtension = "markdownlint"
 
 const extensionNote = `Install it from the Zed extensions panel; Zed then starts mdrev for Markdown
@@ -112,10 +116,6 @@ func currentBinary() (string, error) {
 		exe = resolved
 	}
 	return exe, nil
-}
-
-func zedConfigDir() string {
-	return filepath.Join(os.Getenv("HOME"), ".config", "zed")
 }
 
 // setUpAgentDocs installs the instructions that tell a coding agent how to use
@@ -277,8 +277,7 @@ func writeIfAbsent(path, content string) error {
 }
 
 func hostExtensionInstalled() bool {
-	_, err := os.Stat(filepath.Join(os.Getenv("HOME"),
-		".local/share/zed/extensions/installed", hostExtension, "extension.toml"))
+	_, err := os.Stat(filepath.Join(zedExtensionDir(hostExtension), "extension.toml"))
 	return err == nil
 }
 
@@ -302,8 +301,7 @@ func zedSettings(exe string) string {
 }
 
 func ownExtensionInstalled() bool {
-	_, err := os.Stat(filepath.Join(os.Getenv("HOME"),
-		".local/share/zed/extensions/installed/mdrev-language-server/extension.toml"))
+	_, err := os.Stat(filepath.Join(zedExtensionDir(extensionID), "extension.toml"))
 	return err == nil
 }
 

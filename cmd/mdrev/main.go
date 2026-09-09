@@ -20,6 +20,8 @@ Comments live in a sidecar next to the document; the document is never modified.
   mdrev init [flags]        prepare a project: instructions for coding agents
   mdrev comment [flags]     add a comment; text from stdin or --editor
   mdrev reply [flags]       reply in a thread
+  mdrev apply [flags]       apply a comment's suggested edit to the document
+  mdrev resolve [flags]     close a thread without replying
   mdrev list <file.md>      open comments; --json for an agent
   mdrev threads <file.md>   browse threads, reply and resolve, in a terminal UI
   mdrev lsp                 language server, started by the editor
@@ -56,6 +58,10 @@ func main() {
 		err = initProject(os.Args[2:])
 	case "reply":
 		err = replyToComment(os.Args[2:])
+	case "apply":
+		err = applySuggestion(os.Args[2:])
+	case "resolve":
+		err = resolveComment(os.Args[2:])
 	case "list":
 		err = printComments(os.Args[2:])
 	case "threads":
@@ -82,12 +88,16 @@ func browseThreads(args []string) error {
 	if len(rest) < 1 {
 		return fmt.Errorf("usage: mdrev threads <file.md> [--line N]")
 	}
+	if err := requireDocument(rest[0]); err != nil {
+		return err
+	}
 	return tui.Run(rest[0], *line)
 }
 
 func printComments(args []string) error {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "machine-readable output")
+	all := fs.Bool("all", false, "include resolved threads and how they ended")
 	rest, err := parseFlags(fs, args)
 	if err != nil {
 		return err
@@ -111,7 +121,7 @@ func printComments(args []string) error {
 			switch {
 			case c.ReplyTo != "":
 				replies[c.ReplyTo] = append(replies[c.ReplyTo], c)
-			case !c.Resolved:
+			case !c.Resolved || *all:
 				open = append(open, c)
 			}
 		}

@@ -31,6 +31,18 @@ the thread is what the human sees next to the text.
 Add `--resolve` only when the thread is genuinely finished — you made the
 change, or you both agreed nothing is needed.
 
+## Landing or closing a thread
+
+```sh
+mdrev apply --file doc.md --id 9b9e4214       # take the suggestion, edit the document
+mdrev resolve --file doc.md --id 9b9e4214     # close it, unchanged
+mdrev resolve --file doc.md --id 9b9e4214 --dismiss
+```
+
+`mdrev list doc.md --json --all` then shows closed threads with `x_outcome` set
+to `applied`, `dismissed` or `resolved`. Read it before proposing anything:
+re-proposing a change the author already turned down is worse than silence.
+
 ## Proposing a change to the text
 
 ```sh
