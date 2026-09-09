@@ -28,6 +28,11 @@ func Update(document string, fn func(*Sidecar) error) error {
 	if err := fn(sc); err != nil {
 		return err
 	}
+	// Positions are rewritten on the way out, so what is on disk describes the
+	// document as it is rather than as it was when the comment was written.
+	if text, err := os.ReadFile(document); err == nil {
+		sc.Reanchor(string(text))
+	}
 	return sc.save()
 }
 

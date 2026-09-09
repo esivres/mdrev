@@ -101,6 +101,9 @@ mdrev list spec.md --json
 mdrev list spec.md --json --all   # resolved threads too, with x_outcome
 ```
 
+A thread whose quoted text is gone is printed with `[anchor lost]`, and carries
+`"orphaned": true` in JSON.
+
 Closing a thread records how it ended — `applied`, `dismissed` or `resolved` —
 in `x_outcome`. Without that, an accepted suggestion and a rejected one leave
 identical state, and an agent proposes the same edit again.

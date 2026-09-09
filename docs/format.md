@@ -46,6 +46,18 @@ edited, the comment follows the text; when the fragment disappears, the comment
 survives, marked as orphaned rather than deleted. A lost comment is worse than
 a misplaced one.
 
+Every write rewrites the positions of every comment from the document as it is
+at that moment: `line`, `end_line`, `start_column`, `end_column` — columns in
+characters, not bytes — plus `x_reanchor_status` and `x_reanchor_score`, the
+keys the reference tool uses. Without this the recorded position describes
+where the text used to be, and decays with each edit above it. `mrsf reanchor`
+finds nothing left to change after mdrev has written.
+
+A comment whose fragment is gone is marked `x_reanchor_status: orphaned` and
+keeps its last known line. `mdrev list` shows it as `[anchor lost]`, and
+`--json` carries `"orphaned": true`, so an agent knows it is answering a thread
+about a passage that no longer exists.
+
 ## Threads
 
 A reply is a comment with `reply_to` pointing at its parent, and it inherits

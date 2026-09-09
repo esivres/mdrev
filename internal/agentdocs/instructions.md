@@ -13,7 +13,12 @@ mdrev list doc.md --json     # the same for a program
 
 The JSON is an array of threads using the sidecar's own field names — `id`,
 `text`, `selected_text`, `line`, `x_suggested_text` — each with its `replies`
-nested inside. That is where the human's answer to your question appears.
+nested inside. That is where the human's answer appears.
+
+`"orphaned": true` means the quoted text is no longer in the document: the
+comment is about a passage that has been rewritten or deleted, and `line` is
+only where it last was. Say so instead of answering as though the text is still
+there.
 
 Check this after you hand a document over, and again whenever you are asked
 what the review says. An unanswered comment is work you still owe.

@@ -175,10 +175,8 @@ func (c Comment) Outcome() string {
 
 func (c *Comment) SetOutcome(outcome string) {
 	if outcome == "" {
+		delete(c.Extra, OutcomeKey)
 		return
 	}
-	if c.Extra == nil {
-		c.Extra = map[string]any{}
-	}
-	c.Extra[OutcomeKey] = outcome
+	c.setExtra(OutcomeKey, outcome)
 }

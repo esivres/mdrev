@@ -139,6 +139,9 @@ func printComments(args []string) error {
 		if outcome := c.Outcome(); outcome != "" {
 			fmt.Printf("  (%s)", outcome)
 		}
+		if c.Orphaned() {
+			fmt.Print("  [anchor lost]")
+		}
 		fmt.Println()
 		if c.SelectedText != "" {
 			fmt.Printf("    %q\n", c.SelectedText)
