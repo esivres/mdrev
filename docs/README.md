@@ -8,3 +8,5 @@
   requirements and the submission steps.
 - [ADR-0001](adr-0001-storage-and-tooling.md) — why MRSF was adopted, and why
   its tooling and md-redline were not.
+- [ADR-0002](adr-0002-scope.md) — reviewing code works already; why the scope
+  stays at markdown for now.
