@@ -85,7 +85,7 @@ Opens the terminal UI over one document.
 | `n` | start a new thread on the line you came from |
 | `r` | reply to the selected thread (`Ctrl+S` sends, `Esc` cancels) |
 | `x` | resolve or reopen |
-| `a` | show resolved threads too |
+| `a` | show resolved threads too, and hide them again |
 | `o` | open the document at the thread's line in `$EDITOR` |
 | `q` | quit |
 

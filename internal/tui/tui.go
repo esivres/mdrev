@@ -445,18 +445,24 @@ func (m model) View() string {
 	}
 	if len(m.threads) == 0 && m.mode == browsing {
 		return fmt.Sprintf("\n  %s\n\n  No open comments.\n\n  %s\n",
-			titleStyle.Render(m.document), dimStyle.Render("n new · a all · q quit"))
+			titleStyle.Render(m.document),
+			dimStyle.Render("n new · "+m.resolvedHelp()+" · q quit"))
 	}
 
+	counted := fmt.Sprintf("%d open", len(m.threads))
+	if m.showAll {
+		counted = fmt.Sprintf("%d threads, resolved included", len(m.threads))
+	}
 	header := fmt.Sprintf("  %s  %s",
 		titleStyle.Render(m.document),
-		dimStyle.Render(fmt.Sprintf("%d threads", len(m.threads))))
+		dimStyle.Render(counted))
 
 	panes := lipgloss.JoinHorizontal(lipgloss.Top,
 		listStyle.Render(m.listView()),
 		m.bodyPane())
 
-	help := "j/k thread · ctrl+d/ctrl+u scroll · n new · r reply · x resolve · a all · o open · q quit"
+	help := "j/k thread · ctrl+d/ctrl+u scroll · n new · r reply · x resolve · " +
+		m.resolvedHelp() + " · o open in editor · q quit"
 	if m.mode != browsing {
 		help = "ctrl+s save · esc cancel"
 	}
@@ -469,6 +475,13 @@ func (m model) View() string {
 
 // scrollHint tells the reader that a thread continues past the pane, which is
 // otherwise invisible and makes long discussions look truncated.
+func (m model) resolvedHelp() string {
+	if m.showAll {
+		return "a hide resolved"
+	}
+	return "a show resolved"
+}
+
 func (m model) scrollHint() string {
 	if m.mode != browsing || m.body.AtBottom() && m.body.AtTop() {
 		return ""
