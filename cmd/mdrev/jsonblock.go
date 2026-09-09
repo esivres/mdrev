@@ -56,14 +56,19 @@ func replaceBlock(text, block string) string {
 		return text
 	}
 	end += start + len(blockEnd)
-	return text[:start] + strings.TrimSpace(indent(block))[len(indentUnit):] + text[end:]
+	// The first line sits where the old block began, so only the rest is
+	// indented.
+	return text[:start] + strings.TrimPrefix(indent(block), indentUnit) + text[end:]
 }
 
 // appendToArray puts the block just before the array's closing bracket, so the
-// rest of the file — comments, order, spacing — is untouched.
+// rest of the file — comments, order, spacing — is untouched. The opening
+// bracket is found rather than assumed to be first: these files usually start
+// with a comment.
 func appendToArray(text, block string) (string, error) {
+	open := strings.Index(text, "[")
 	close := strings.LastIndex(text, "]")
-	if close < 0 || !strings.HasPrefix(text, "[") {
+	if open < 0 || close < open {
 		return "", fmt.Errorf("expected a JSON array")
 	}
 
@@ -108,4 +113,38 @@ func conflicts(path string, keys []string) []string {
 		}
 	}
 	return found
+}
+
+// boundTo reports what a key is already bound to in the user's keymap, ignoring
+// our own block. It reads the text rather than parsing: the file is JSON with
+// comments, and this only needs to be good enough to warn.
+func boundTo(path, key string) string {
+	data, err := os.ReadFile(path)
+	if err != nil || key == "" {
+		return ""
+	}
+	text := string(data)
+	if i := strings.Index(text, blockBegin); i >= 0 {
+		if j := strings.Index(text[i:], blockEnd); j >= 0 {
+			text = text[:i] + text[i+j:]
+		}
+	}
+
+	at := strings.Index(text, `"`+key+`":`)
+	if at < 0 {
+		return ""
+	}
+	rest := strings.TrimSpace(text[at+len(key)+3:])
+	if end := strings.IndexAny(rest, ",\n}"); end > 0 {
+		rest = rest[:end]
+	}
+	// A trailing line comment is common in these files and is not part of the
+	// binding.
+	if comment := strings.Index(rest, "//"); comment >= 0 {
+		rest = rest[:comment]
+	}
+	if value := strings.Trim(strings.TrimSpace(rest), `"[ `); value != "" {
+		return value
+	}
+	return "something"
 }

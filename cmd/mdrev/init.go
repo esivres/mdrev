@@ -13,6 +13,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/esivres/mdrev/internal/agentdocs"
+	"github.com/esivres/mdrev/internal/tui"
 )
 
 // Whose language server slot mdrev borrows when its own extension is missing.
@@ -165,6 +166,9 @@ func chooseKeys(flagValue string) (comment, question, threads string, err error)
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return splitKeys(keyPresets[0])
 	}
+	if comment, question, threads, ok := pickKeys(); ok {
+		return comment, question, threads, nil
+	}
 
 	fmt.Println("\nShortcuts for commenting, asking, and the thread browser:")
 	for i, k := range keyPresets {
@@ -232,6 +236,27 @@ func splitKeys(value string) (comment, question, threads string, err error) {
 		threads = parts[2]
 	}
 	return comment, question, threads, nil
+}
+
+// pickKeys lets the reader press the combinations rather than spell them out.
+// Falls back to the text menu if the screen cannot be drawn.
+func pickKeys() (comment, question, threads string, ok bool) {
+	defaults, _, _, err := splitKeys(keyPresets[0])
+	if err != nil {
+		return "", "", "", false
+	}
+	q, t := shiftVariant(defaults), sameChord(defaults, "t")
+
+	keymapPath := filepath.Join(zedConfigDir(), "keymap.json")
+	chosen, save, err := tui.ChooseKeys([]tui.Binding{
+		{Label: "Comment on selection", Key: defaults},
+		{Label: "Question about selection", Key: q},
+		{Label: "Review threads", Key: t},
+	}, func(key string) string { return boundTo(keymapPath, key) })
+	if err != nil || !save {
+		return "", "", "", err == nil && !save
+	}
+	return chosen[0].Key, chosen[1].Key, chosen[2].Key, true
 }
 
 // Keeps the modifiers and swaps the final key, so the bindings stay a family.
@@ -374,9 +399,14 @@ func entriesJSON(items []any) string {
 }
 
 func mustJSON(v any) string {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
+	var buf strings.Builder
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	// Zed's contexts contain "&&", which the default encoder would escape into
+	// \u0026 — valid JSON, unreadable config.
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
 		panic(err)
 	}
-	return string(b) + "\n"
+	return buf.String()
 }
