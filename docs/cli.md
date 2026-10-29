@@ -46,7 +46,7 @@ with `Ctrl+D`, exactly as before.
 | flag | meaning |
 |---|---|
 | `--file` | the document; required |
-| `--quote` | the fragment to anchor to |
+| `--quote` | the fragment to anchor to; may span lines |
 | `--line` | 1-based line, used to disambiguate a repeated quote |
 | `--text` | comment text; read from stdin when omitted |
 | `--editor` | compose in `$EDITOR` instead of stdin |

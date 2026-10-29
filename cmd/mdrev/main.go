@@ -236,9 +236,10 @@ func addComment(args []string) error {
 		return err
 	}
 
-	// Zed hands multi-line selections through verbatim; the first line is
-	// enough to anchor on and keeps the sidecar readable.
-	*quote = strings.TrimSpace(firstLine(*quote))
+	// Whitespace only: a selection can span lines, and the whole fragment is
+	// what the comment is about — the first line alone anchors it to half
+	// the text it names.
+	*quote = strings.TrimSpace(*quote)
 	if *quote == "" && *line > 0 {
 		// Without a selection, anchor on the line itself rather than on
 		// nothing: a comment with no anchor cannot follow the text at all.
@@ -338,11 +339,4 @@ func lineWords(document string, line int) string {
 		return ""
 	}
 	return anchor.After(lines[line-1])
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/esivres/mdrev/internal/anchor"
 	"github.com/esivres/mdrev/internal/mrsf"
 )
 
@@ -99,16 +98,19 @@ func applySuggestion(args []string) error {
 		if err != nil {
 			return err
 		}
-		lines := strings.Split(string(data), "\n")
-		if !anchor.Found(lines, c.SelectedText) {
+		// The fragment may appear elsewhere; rewriting the wrong one is
+		// silent damage. A quote can span lines, so occurrences are matched
+		// against the whole text and ranked by their starting line — a
+		// per-line scan would never find a multi-line fragment at all.
+		text := string(data)
+		off, found := nearestOffset(text, c.SelectedText, c.Line)
+		if !found {
 			return fmt.Errorf("the text %q is no longer in %s", c.SelectedText, *file)
 		}
-		// The fragment may appear elsewhere; rewriting the wrong one is silent
-		// damage.
-		at = anchor.NearestLine(lines, c.SelectedText, c.Line-1)
-		lines[at] = strings.Replace(lines[at], c.SelectedText, suggested, 1)
+		at = 1 + strings.Count(text[:off], "\n") // for the report below
+		text = text[:off] + suggested + text[off+len(c.SelectedText):]
 
-		if err := writeFileAtomically(*file, []byte(strings.Join(lines, "\n"))); err != nil {
+		if err := writeFileAtomically(*file, []byte(text)); err != nil {
 			return err
 		}
 		c.Resolved = true
@@ -118,8 +120,36 @@ func applySuggestion(args []string) error {
 	}); err != nil {
 		return err
 	}
-	fmt.Printf("Applied %s at %s:%d\n", shortID(applied.ID), *file, at+1)
+	fmt.Printf("Applied %s at %s:%d\n", shortID(applied.ID), *file, at)
 	return nil
+}
+
+// nearestOffset finds the occurrence of needle closest to the given 1-based
+// line, as a byte offset into text. Ties keep the earlier offset, the way the
+// re-anchorer picks.
+func nearestOffset(text, needle string, line int) (int, bool) {
+	best, bestDist := -1, 1<<30
+	// Occurrences arrive in increasing offset order, so newlines are counted
+	// incrementally over the slice since the previous match — rescanning the
+	// prefix for every occurrence would make apply O(k·n) on a large file.
+	newlines, off := 0, 0
+	for off < len(text) {
+		i := strings.Index(text[off:], needle)
+		if i < 0 {
+			break
+		}
+		at := off + i
+		newlines += strings.Count(text[off:at], "\n")
+		d := 1 + newlines - line
+		if d < 0 {
+			d = -d
+		}
+		if d < bestDist {
+			best, bestDist = at, d
+		}
+		off = at + 1
+	}
+	return best, best >= 0
 }
 
 // Replaces a file through a temporary one beside it, keeping its mode.

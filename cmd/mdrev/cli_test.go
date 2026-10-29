@@ -201,6 +201,48 @@ func TestApplyRewritesTheAnchoredOccurrence(t *testing.T) {
 	}
 }
 
+// A selection can span lines; the whole fragment is what the comment is
+// about. Truncating to the first line anchored the comment to half the text
+// it named, and a per-line apply could not find the fragment at all.
+func TestMultilineQuoteSurvivesAndApplies(t *testing.T) {
+	bin := build(t)
+	dir := t.TempDir()
+	doc := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(doc,
+		[]byte("# Spec\n\nfirst line of the claim\nsecond line of the claim\n\ntail\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, bin, dir, "comment", "--file", "doc.md",
+		"--quote", "first line of the claim\nsecond line of the claim", "--line", "3",
+		"--type", "suggestion", "--suggest", "one rewritten line", "--text", "tighten")
+
+	out, err := run(t, bin, dir, "list", "doc.md", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listed []struct {
+		SelectedText string `json:"selected_text"`
+	}
+	if err := json.Unmarshal([]byte(out), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].SelectedText != "first line of the claim\nsecond line of the claim" {
+		t.Fatalf("the multi-line quote must survive intact, got %+v", listed)
+	}
+
+	id := firstID(t, bin, dir)
+	if out, err := run(t, bin, dir, "apply", "--file", "doc.md", "--id", id[:8]); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	got, err := os.ReadFile(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "# Spec\n\none rewritten line\n\ntail\n"; string(got) != want {
+		t.Errorf("apply must replace across both lines:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
 // An agent has to be able to tell an accepted proposal from a rejected one,
 // or it will propose the same edit again. Both close the thread, so the
 // difference has to be recorded.
