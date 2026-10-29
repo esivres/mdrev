@@ -53,6 +53,13 @@ keys the reference tool uses. Without this the recorded position describes
 where the text used to be, and decays with each edit above it. `mrsf reanchor`
 finds nothing left to change after mdrev has written.
 
+A write records in `x_reanchor_doc` the SHA-256 of the document text the
+positions were computed against, and the next write against the same text
+skips the pass: it could not move a position, and on a large review the scan
+is expensive enough to hold the lock for longer than another writer will wait.
+The skip is an optimisation only — a tool that rewrites positions itself may
+drop the key, and mdrev will simply do the work again.
+
 When the quoted text is not found exactly, the closest run of words in the
 document is taken instead, provided it still resembles the quote — editing the
 very sentence a comment is about is the ordinary case in review, and the remark
