@@ -130,3 +130,36 @@ func TestExactMatchIsPreferredOverAResemblance(t *testing.T) {
 		t.Errorf("an exact match scores 1, got %v", c.Extra[ReanchorScoreKey])
 	}
 }
+
+// When the nearest line carries the quote twice, the recorded columns must
+// point at the first of the two, the way a scan in offset order always chose.
+// The other way around, a save would silently move an unchanged comment's
+// columns inside its own line.
+func TestEquidistantOccurrencesKeepTheEarlierOne(t *testing.T) {
+	c := Comment{Line: 5, SelectedText: "alpha"}
+
+	reanchor("keep alpha drop alpha\nb\nc\n", &c)
+
+	if c.StartColumn == nil || *c.StartColumn != 5 {
+		t.Errorf("start column: got %s, want 5", column(c.StartColumn))
+	}
+}
+
+// A multi-line quote can start above the recorded line — a foreign tool, or
+// the CLI's --line pointing inside the selection, writes positions like that.
+// An occurrence straddling the recorded line's start must still be found
+// exactly rather than orphaned.
+func TestQuoteStraddlingTheRecordedLineIsFound(t *testing.T) {
+	c := Comment{Line: 2, SelectedText: "two\nthree"}
+
+	reanchor("one two\nthree four\nfive\n", &c)
+
+	if c.Orphaned() {
+		t.Fatal("an occurrence straddling the recorded line must be found")
+	}
+	if c.Line != 1 || c.StartColumn == nil || *c.StartColumn != 4 ||
+		c.EndLine != 2 || c.EndColumn == nil || *c.EndColumn != 5 {
+		t.Errorf("position: got %d,%s-%d,%s, want 1,4-2,5",
+			c.Line, column(c.StartColumn), c.EndLine, column(c.EndColumn))
+	}
+}
