@@ -1,0 +1,778 @@
+/*
+ * mdrev preview — page chrome, review cards and compose UI.
+ *
+ * markdown.css owns the document body; this file adds the toolbar, the
+ * thread overlay and the auto-dark palette. Variants of markdown.css's
+ * variables are re-declared here because its dark theme is keyed on
+ * [data-theme="dark"], which the page never sets.
+ */
+
+:root {
+  color-scheme: light dark;
+  --toolbar-height: 44px;
+  --mdrev-bg: #ffffff;
+  --mdrev-surface: #f6f8fa;
+  --mdrev-text: #1f2328;
+  --mdrev-muted: #59636e;
+  --mdrev-border: #d0d7de;
+  --mdrev-accent: #0969da;
+  --mdrev-danger: #cf222e;
+  --mdrev-success: #1a7f37;
+  --mdrev-shadow: 0 1px 3px rgba(27, 31, 36, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  /* html:root outranks the plain :root blocks of markdown.css and
+     highlight.css regardless of stylesheet order. */
+  html:root {
+    --color-text-primary: #c9d1d9;
+    --color-text-tertiary: #8b949e;
+    --color-text-link: #58a6ff;
+    --color-bg-primary: #0d1117;
+    --color-bg-secondary: #0d1117;
+    --color-bg-tertiary: #161b22;
+    --color-border-primary: #30363d;
+    --color-border-secondary: #21262d;
+    --color-border-tertiary: #6e7681;
+    --color-kbd-foreground: #b1bac4;
+    --color-markdown-blockquote-border: #3b434b;
+    --color-markdown-table-border: #3b434b;
+    --color-markdown-table-tr-border: #272c32;
+    --color-markdown-code-bg: #f0f6fc26;
+    --mdrev-bg: #0d1117;
+    --mdrev-surface: #161b22;
+    --mdrev-text: #e6edf3;
+    --mdrev-muted: #8b949e;
+    --mdrev-border: #30363d;
+    --mdrev-accent: #1f6feb;
+    --mdrev-danger: #f85149;
+    --mdrev-success: #3fb950;
+    --mdrev-shadow: 0 1px 3px rgba(1, 4, 9, 0.6);
+  }
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  background: var(--mdrev-bg);
+}
+
+body {
+  margin: 0;
+  padding-top: var(--toolbar-height);
+  background: var(--mdrev-bg);
+  color: var(--mdrev-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+}
+
+/* ---- toolbar ------------------------------------------------------------ */
+
+#toolbar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: var(--toolbar-height);
+  padding: 0 16px;
+  background: var(--mdrev-surface);
+  border-bottom: 1px solid var(--mdrev-border);
+  font-size: 13px;
+}
+
+.toolbar-file {
+  min-width: 0;
+}
+
+.file-name {
+  display: inline-block;
+  max-width: 46vw;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--mdrev-muted);
+}
+
+.thread-count {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.conn .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #b1bac4;
+}
+
+.conn[data-state="on"] .dot {
+  background: var(--mdrev-success);
+}
+
+.conn[data-state="off"] .dot {
+  background: var(--mdrev-danger);
+}
+
+/* ---- layout ------------------------------------------------------------- */
+
+#app {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px 16px 120px;
+}
+
+#document-column {
+  min-width: 0;
+}
+
+/* The right gutter only exists on wide screens; narrow ones inline cards. */
+.margin-notes {
+  display: none;
+}
+
+/* Wide screens keep the review beside the document, aligned to its blocks. */
+@media (min-width: 1100px) {
+  #app {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 28px;
+    align-items: stretch;
+    max-width: 1320px;
+  }
+
+  .margin-notes {
+    position: relative;
+    display: block;
+    min-height: 100%;
+  }
+
+  .margin-notes .thread-card {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .margin-notes .thread-card.resolved {
+    opacity: 0.72;
+  }
+}
+
+#doc.markdown-body {
+  border-radius: 6px;
+  box-shadow: var(--mdrev-shadow);
+}
+
+@media (max-width: 640px) {
+  #doc.markdown-body {
+    padding: 20px;
+  }
+}
+
+/* ---- lost anchors ------------------------------------------------------- */
+
+.lost {
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background: var(--mdrev-surface);
+  border: 1px dashed var(--mdrev-border);
+  border-radius: 6px;
+  opacity: 0.92;
+}
+
+.lost-title {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mdrev-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lost-count {
+  font-weight: 400;
+}
+
+.lost-note {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--mdrev-muted);
+}
+
+.lost .thread-card {
+  opacity: 0.82;
+  box-shadow: none;
+}
+
+/* ---- anchored block ----------------------------------------------------- */
+
+.markdown-body .has-threads {
+  padding-left: 10px;
+  box-shadow: inset 3px 0 0 var(--mdrev-accent);
+}
+
+.thread-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 0 20px;
+}
+
+.thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---- thread card -------------------------------------------------------- */
+
+.thread-card {
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mdrev-text);
+  background: var(--mdrev-bg);
+  border: 1px solid var(--mdrev-border);
+  border-left: 3px solid var(--mdrev-muted);
+  border-radius: 6px;
+  box-shadow: var(--mdrev-shadow);
+}
+
+.thread-card.resolved {
+  background: var(--mdrev-surface);
+  color: var(--mdrev-muted);
+  border-left-color: var(--mdrev-border);
+}
+
+.thread-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--mdrev-muted);
+}
+
+.badge {
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+
+.badge-comment {
+  color: #57606a;
+  background: #eaeef2;
+}
+
+.badge-issue {
+  color: #cf222e;
+  background: #ffebe9;
+  border-color: #ffcecb;
+}
+
+.badge-question {
+  color: #0969da;
+  background: #ddf4ff;
+  border-color: #b6e3ff;
+}
+
+.badge-suggestion {
+  color: #1a7f37;
+  background: #dafbe1;
+  border-color: #aceebb;
+}
+
+.badge-outcome {
+  color: #57606a;
+  background: transparent;
+  border-color: var(--mdrev-border);
+}
+
+.thread-author {
+  font-weight: 600;
+  color: var(--mdrev-text);
+}
+
+.thread-time {
+  font-size: 11px;
+}
+
+.thread-text > :first-child {
+  margin-top: 0;
+}
+
+.thread-text > :last-child {
+  margin-bottom: 0;
+}
+
+.thread-card .thread-text p,
+.thread-card .thread-text ul,
+.thread-card .thread-text ol,
+.thread-card .thread-text pre,
+.thread-card .thread-text blockquote,
+.thread-card .thread-text table {
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.thread-card .thread-text h1,
+.thread-card .thread-text h2,
+.thread-card .thread-text h3,
+.thread-card .thread-text h4,
+.thread-card .thread-text h5,
+.thread-card .thread-text h6 {
+  margin: 8px 0 4px;
+  padding-bottom: 0;
+  font-size: 1.1em;
+  border-bottom: 0;
+}
+
+.thread-card .thread-text pre {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.markdown-body .thread-card .thread-quote {
+  margin: 8px 0;
+  padding: 6px 8px;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  background: var(--mdrev-surface);
+  border-left: 3px solid var(--mdrev-border);
+  border-radius: 0 4px 4px 0;
+}
+
+/* ---- suggestion diff ---------------------------------------------------- */
+
+.suggestion {
+  margin: 8px 0;
+  padding: 6px 8px;
+  background: var(--mdrev-surface);
+  border: 1px solid var(--mdrev-border);
+  border-radius: 6px;
+}
+
+.suggestion-label {
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--mdrev-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.diff {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.diff del {
+  color: #82071e;
+  background: #ffebe9;
+}
+
+.diff ins {
+  color: #116329;
+  background: #dafbe1;
+  text-decoration: none;
+}
+
+.diff-blocks pre {
+  margin: 4px 0;
+  padding: 6px 8px;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  border-radius: 4px;
+}
+
+.diff-blocks .diff-before {
+  color: #82071e;
+  background: #ffebe9;
+}
+
+.diff-blocks .diff-after {
+  color: #116329;
+  background: #dafbe1;
+}
+
+/* ---- replies ------------------------------------------------------------ */
+
+.thread-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--mdrev-border);
+}
+
+.reply {
+  padding-left: 10px;
+  font-size: 12px;
+  border-left: 2px solid var(--mdrev-border);
+}
+
+.reply-head {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 2px;
+  font-size: 11px;
+  color: var(--mdrev-muted);
+}
+
+.reply-text > :first-child {
+  margin-top: 0;
+}
+
+.reply-text > :last-child {
+  margin-bottom: 0;
+}
+
+.reply-form {
+  margin-top: 8px;
+}
+
+.reply-form textarea {
+  width: 100%;
+  min-height: 52px;
+  box-sizing: border-box;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  color: inherit;
+  resize: vertical;
+  background: var(--mdrev-bg);
+  border: 1px solid var(--mdrev-border);
+  border-radius: 6px;
+}
+
+.reply-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ---- buttons ------------------------------------------------------------ */
+
+.btn {
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--mdrev-text);
+  cursor: pointer;
+  background: var(--mdrev-surface);
+  border: 1px solid var(--mdrev-border);
+  border-radius: 6px;
+}
+
+.btn:hover {
+  border-color: var(--mdrev-muted);
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.btn.primary {
+  color: #ffffff;
+  background: var(--mdrev-accent);
+  border-color: var(--mdrev-accent);
+}
+
+.btn.primary:hover {
+  filter: brightness(1.08);
+}
+
+.btn.small {
+  padding: 3px 9px;
+  font-size: 12px;
+}
+
+.thread-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ---- hover comment button ----------------------------------------------- */
+
+.add-comment {
+  position: fixed;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  background: var(--mdrev-bg);
+  border: 1px solid var(--mdrev-border);
+  border-radius: 6px;
+  box-shadow: var(--mdrev-shadow);
+}
+
+.add-comment:hover {
+  background: var(--mdrev-surface);
+  border-color: var(--mdrev-muted);
+}
+
+/* ---- compose popover ---------------------------------------------------- */
+
+.compose {
+  position: fixed;
+  z-index: 200;
+  width: 340px;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  padding: 10px;
+  font-size: 13px;
+  color: var(--mdrev-text);
+  background: var(--mdrev-bg);
+  border: 1px solid var(--mdrev-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(140, 149, 159, 0.28);
+}
+
+.compose-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.compose-title {
+  font-weight: 600;
+}
+
+.compose-line {
+  font-size: 11px;
+  color: var(--mdrev-muted);
+}
+
+.compose-quote {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  max-height: 72px;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--mdrev-muted);
+  white-space: pre-wrap;
+  background: var(--mdrev-surface);
+  border-left: 3px solid var(--mdrev-border);
+  border-radius: 0 4px 4px 0;
+}
+
+.segmented {
+  display: flex;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border: 1px solid var(--mdrev-border);
+  border-radius: 6px;
+}
+
+.seg-btn {
+  flex: 1;
+  padding: 5px 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--mdrev-muted);
+  cursor: pointer;
+  background: var(--mdrev-surface);
+  border: 0;
+  border-right: 1px solid var(--mdrev-border);
+}
+
+.seg-btn:last-child {
+  border-right: 0;
+}
+
+.seg-btn.active {
+  color: #ffffff;
+  background: var(--mdrev-accent);
+}
+
+.compose textarea,
+.compose input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font: inherit;
+  color: inherit;
+  background: var(--mdrev-bg);
+  border: 1px solid var(--mdrev-border);
+  border-radius: 6px;
+}
+
+.compose textarea {
+  min-height: 76px;
+  margin-bottom: 8px;
+  resize: vertical;
+}
+
+.compose input {
+  margin-bottom: 8px;
+}
+
+.compose textarea:focus,
+.compose input:focus,
+.reply-form textarea:focus {
+  outline: 2px solid var(--mdrev-accent);
+  outline-offset: -1px;
+}
+
+.compose-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.compose-hint {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--mdrev-muted);
+}
+
+/* ---- toasts ------------------------------------------------------------- */
+
+.toasts {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.toast {
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #ffffff;
+  background: #24292f;
+  border-radius: 6px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+  opacity: 1;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.toast.error {
+  background: var(--mdrev-danger);
+}
+
+.toast.leaving {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+/* ---- mermaid ------------------------------------------------------------ */
+
+.mermaid {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
+  overflow-x: auto;
+}
+
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-error {
+  margin: -8px 0 16px;
+  font-size: 12px;
+  color: var(--mdrev-danger);
+}
+
+/* ---- dark overrides for the light-only bits ----------------------------- */
+
+@media (prefers-color-scheme: dark) {
+  .badge-comment,
+  .badge-outcome {
+    color: #8b949e;
+    background: #21262d;
+    border-color: #30363d;
+  }
+
+  .badge-issue {
+    color: #ff7b72;
+    background: #3d1519;
+    border-color: #6e2b2f;
+  }
+
+  .badge-question {
+    color: #79c0ff;
+    background: #0c2d6b;
+    border-color: #1f4a8a;
+  }
+
+  .badge-suggestion {
+    color: #7ee787;
+    background: #122f1d;
+    border-color: #21502f;
+  }
+
+  .diff del,
+  .diff-blocks .diff-before {
+    color: #ff7b72;
+    background: #3d1519;
+  }
+
+  .diff ins,
+  .diff-blocks .diff-after {
+    color: #7ee787;
+    background: #122f1d;
+  }
+}

@@ -12,9 +12,12 @@ doc.md              the document, never touched
 doc.md.review.yaml  comments, threads, suggested edits
 ```
 
-It runs as two front ends over the same store: a language server, so comments
-show up right in the editor, and a CLI with `--json`, so an agent can review
-the document too.
+It runs as three front ends over the same store: a language server, so comments
+show up right in the editor; a CLI with `--json`, so an agent can review the
+document too; and `mdrev preview <file.md>` — a browser page with the rendered
+document and its review: read threads, file comments, reply, resolve, browse
+the history. The page updates as the document or the sidecar changes and
+needs no editor at all.
 
 ## Install
 

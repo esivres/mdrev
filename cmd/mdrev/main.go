@@ -29,6 +29,7 @@ Comments live in a sidecar next to the document; the document is never modified.
   mdrev resolve [flags]     close a thread without replying
   mdrev list <file.md>      open comments; --json for an agent
   mdrev threads <file.md>   browse threads, reply and resolve, in a terminal UI
+  mdrev preview <file.md>   open the document and its review in a browser
   mdrev lsp                 language server, started by the editor
 
   mdrev <command> -h        flags of a command
@@ -83,6 +84,8 @@ func main() {
 		err = printComments(os.Args[2:])
 	case "threads":
 		err = browseThreads(os.Args[2:])
+	case "preview":
+		err = previewDocument(os.Args[2:])
 	case "comment":
 		err = addComment(os.Args[2:])
 	default:
