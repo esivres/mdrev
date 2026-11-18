@@ -1,19 +1,19 @@
 {
-    "version": "0.1.6",
+    "version": "0.2.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/esivres/mdrev/releases/download/v0.1.6/mdrev_0.1.6_windows_amd64.zip",
+            "url": "https://github.com/esivres/mdrev/releases/download/v0.2.0/mdrev_0.2.0_windows_amd64.zip",
             "bin": [
                 "mdrev.exe"
             ],
-            "hash": "a6382494db53a4b2fa97345abed4d80406b27e3d6233d6c7b434c918e57d14d7"
+            "hash": "b40a172ae9aaddf68275a3f1818f00d2ee29c3eba1c94c5aed565fd37b1b999a"
         },
         "arm64": {
-            "url": "https://github.com/esivres/mdrev/releases/download/v0.1.6/mdrev_0.1.6_windows_arm64.zip",
+            "url": "https://github.com/esivres/mdrev/releases/download/v0.2.0/mdrev_0.2.0_windows_arm64.zip",
             "bin": [
                 "mdrev.exe"
             ],
-            "hash": "0a9978a64b0ae11769a7c1c813c0ae345c1eae96df4c125f50d49809f03c0bd5"
+            "hash": "1c37baec064999226f5c4070f75ca95369db0fd057f2fd462fa3ef9ce3eed2e7"
         }
     },
     "homepage": "https://github.com/esivres/mdrev",
