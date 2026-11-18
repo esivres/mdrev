@@ -20,7 +20,7 @@ func TestContentEndpointReturnsTheRawDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var out struct {
 		Path string `json:"path"`
 		Text string `json:"text"`
@@ -43,7 +43,7 @@ func TestIndexServesThePage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestVendoredAssetsAreServed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != test.status {
 			t.Errorf("%s: want %d, got %d", test.path, test.status, resp.StatusCode)
 		}

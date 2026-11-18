@@ -113,7 +113,7 @@ func (s *Server) Run(ctx context.Context, ln net.Listener) error {
 		<-serveErr
 		return nil
 	case err := <-serveErr:
-		if err == http.ErrServerClosed {
+		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
 		return err
