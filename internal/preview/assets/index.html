@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mdrev preview</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/assets/css/markdown.css">
+<link rel="stylesheet" href="/assets/preview.css">
+<link rel="stylesheet" href="/assets/css/highlight.css">
+<link rel="stylesheet" href="/assets/css/katex.css">
+<!-- katex.css loads its faces as fonts/…, relative to /assets/css/, but the
+     vendored fonts live at /assets/fonts/. Redeclaring the faces after the
+     stylesheet points them at the served location. -->
+<style>
+@font-face{font-family:KaTeX_AMS;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_AMS-Regular.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Caligraphic;font-style:normal;font-weight:700;src:url(/assets/fonts/KaTeX_Caligraphic-Bold.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Caligraphic;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_Caligraphic-Regular.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Fraktur;font-style:normal;font-weight:700;src:url(/assets/fonts/KaTeX_Fraktur-Bold.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Fraktur;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_Fraktur-Regular.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Main;font-style:normal;font-weight:700;src:url(/assets/fonts/KaTeX_Main-Bold.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Main;font-style:italic;font-weight:700;src:url(/assets/fonts/KaTeX_Main-BoldItalic.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Main;font-style:italic;font-weight:400;src:url(/assets/fonts/KaTeX_Main-Italic.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Main;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_Main-Regular.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Math;font-style:italic;font-weight:700;src:url(/assets/fonts/KaTeX_Math-BoldItalic.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Math;font-style:italic;font-weight:400;src:url(/assets/fonts/KaTeX_Math-Italic.woff2) format("woff2")}
+@font-face{font-family:KaTeX_SansSerif;font-style:normal;font-weight:700;src:url(/assets/fonts/KaTeX_SansSerif-Bold.woff2) format("woff2")}
+@font-face{font-family:KaTeX_SansSerif;font-style:italic;font-weight:400;src:url(/assets/fonts/KaTeX_SansSerif-Italic.woff2) format("woff2")}
+@font-face{font-family:KaTeX_SansSerif;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_SansSerif-Regular.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Script;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_Script-Regular.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Size1;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_Size1-Regular.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Size2;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_Size2-Regular.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Size3;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_Size3-Regular.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Size4;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_Size4-Regular.woff2) format("woff2")}
+@font-face{font-family:KaTeX_Typewriter;font-style:normal;font-weight:400;src:url(/assets/fonts/KaTeX_Typewriter-Regular.woff2) format("woff2")}
+</style>
+</head>
+<body>
+<header id="toolbar">
+  <div class="toolbar-file">
+    <span id="file-name" class="file-name">mdrev preview</span>
+  </div>
+  <div class="toolbar-actions">
+    <span id="thread-count" class="thread-count">0 open</span>
+    <label class="toggle"><input type="checkbox" id="show-resolved"> Show resolved</label>
+    <span id="conn" class="conn" data-state="connecting"><span class="dot"></span><span id="conn-label">Connecting…</span></span>
+  </div>
+</header>
+
+<main id="app">
+  <div id="document-column">
+    <section id="lost" class="lost" hidden>
+      <h2 class="lost-title">Lost anchors <span id="lost-count" class="lost-count"></span></h2>
+      <p class="lost-note">These comments point at lines that no longer exist.</p>
+      <div id="lost-threads" class="thread-list"></div>
+    </section>
+    <div id="doc" class="markdown-body"></div>
+  </div>
+  <aside id="notes" class="margin-notes" aria-label="Review threads"></aside>
+</main>
+
+<button type="button" id="add-comment" class="add-comment" hidden title="Comment on this block" aria-label="Comment on this block">💬</button>
+
+<div id="compose" class="compose" hidden>
+  <div class="compose-head">
+    <span class="compose-title">New comment</span>
+    <span id="compose-line" class="compose-line"></span>
+  </div>
+  <div id="compose-types" class="segmented" role="group" aria-label="Comment type">
+    <button type="button" data-type="" class="seg-btn active">Comment</button>
+    <button type="button" data-type="issue" class="seg-btn">Issue</button>
+    <button type="button" data-type="question" class="seg-btn">Question</button>
+    <button type="button" data-type="suggestion" class="seg-btn">Suggestion</button>
+  </div>
+  <div id="compose-quote" class="compose-quote" hidden></div>
+  <textarea id="compose-text" class="compose-text" rows="4" placeholder="Leave a review comment…"></textarea>
+  <input id="compose-author" class="compose-author" type="text" placeholder="Author — default: git config" aria-label="Author" autocomplete="off" spellcheck="false">
+  <div class="compose-actions">
+    <span class="compose-hint">Ctrl/Cmd+Enter to post</span>
+    <button type="button" id="compose-cancel" class="btn">Cancel</button>
+    <button type="button" id="compose-submit" class="btn primary">Comment</button>
+  </div>
+</div>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="/assets/lib/markdown-it.min.js"></script>
+<script src="/assets/lib/markdown-it-task-lists.min.js"></script>
+<script src="/assets/lib/highlight.min.js"></script>
+<script src="/assets/lib/katex.js"></script>
+<script src="/assets/lib/katex-auto-render.min.js"></script>
+<script src="/assets/lib/mermaid.min.js"></script>
+<script src="/assets/app.js"></script>
+</body>
+</html>
